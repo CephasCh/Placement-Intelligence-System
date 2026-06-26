@@ -1,0 +1,1545 @@
+Design Phase 3: Skills Match & Chatbot
+
+IMPORTANT CAUTIONS AND RULES
+
+1. Do not change the database schema.
+
+2. Do not create new Supabase migrations.
+
+3. Do not rename, delete, or modify any existing Supabase tables, columns, or views.
+
+4. Use existing Supabase views/tables only.
+
+5. For company listing, use:
+
+   * company_search_view
+
+6. For company profile, use:
+
+   * company_profile_view
+   * company_skills_view
+
+7. For comparison, use:
+
+   * company_compare_view
+   * company_skills_view
+
+8. For skill matching, use:
+
+   * company_skills_view
+   * company_search_view
+
+9. For chatbot context, use read-only Supabase queries only.
+
+10. Do not use INSERT, UPDATE, DELETE, ALTER, DROP, CREATE, or TRUNCATE SQL commands.
+
+11. Do not expose Supabase keys or sensitive environment variables in the UI.
+
+12. Do not use service role key in frontend code.
+
+13. Use only the public anon key on the frontend.
+
+14. Keep all database access read-only unless explicitly instructed.
+
+15. Do not add Redux, Zustand, Prisma, or any heavy state-management library.
+
+16. Do not add unnecessary UI libraries.
+
+17. Use Tailwind CSS and existing components only.
+
+18. Keep the dark theme consistent across all pages.
+
+19. Keep the UI clean, readable, responsive, and not too flashy.
+
+20. Use subtle 3D hover effects only where requested.
+
+21. Do not hardcode company results.
+
+22. Fetch real data from Supabase.
+
+23. If data is missing, show “Not available”.
+
+24. If an error happens, show a clean user-friendly error message.
+
+25. After each page is completed, test the route.
+
+26. After each page is completed, fix TypeScript errors before moving to the next page.
+
+27. After each page is completed, check responsive layout for mobile and desktop.
+
+28. Do not continue to the next page until the current page works correctly.
+
+29. Preserve existing working files unless changes are required.
+
+30. Keep the code simple and easy to understand.
+
+31. Create reusable shared styling/components where possible to avoid repeated code.
+
+    ```
+    After each page is completed, test the route and fix TypeScript errors before moving to the next page.
+    ```
+
+skills match page:
+Use this **single Skill Match Page section**.
+
+```text id="yqfs7a"
+SKILL MATCH PAGE REQUIREMENT
+
+Route:
+- /skill-match
+
+Purpose:
+Students enter their skill levels from 1 to 7.
+The page compares student skills with company required skill levels.
+It shows the best 5 matching companies.
+
+Supabase views to use:
+- company_skills_view
+- company_search_view
+
+Design style:
+- Same dark theme style as Company Profile and Comparison pages.
+- Clean card-based layout.
+- Add subtle 3D pop-up effect on result cards.
+- Add a simple moving background design.
+- Keep it clean, premium, readable, and not too flashy.
+- No heavy chart libraries.
+- Use Tailwind CSS only.
+- Page must be interactive and not static.
+
+Matching logic:
+- Student gives skill level from 1 to 7.
+- Compare student level with each company required_level.
+- If student level is equal or above required level, that skill is matched.
+- If student level is below required level, calculate gap.
+- Company match percentage:
+  matched score / total required score * 100
+- Show top 5 companies sorted by match percentage.
+
+Create or update these files:
+1. app/skill-match/page.tsx
+2. app/api/skill-match/route.ts
+
+Code for app/skill-match/page.tsx:
+
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+type StudentSkill = {
+  skill_set_name: string;
+  level: number;
+};
+
+type MatchResult = {
+  company_id: number;
+  name: string;
+  short_name: string | null;
+  category: string | null;
+  overview_preview: string | null;
+  student_fit_score: number | null;
+  match_percentage: number;
+  matched_skills: string[];
+  gap_skills: {
+    skill: string;
+    student_level: number;
+    required_level: number;
+    gap: number;
+  }[];
+};
+
+const defaultSkills: StudentSkill[] = [
+  { skill_set_name: "Coding", level: 4 },
+  { skill_set_name: "SQL and Design", level: 4 },
+  { skill_set_name: "Communication Skills", level: 4 },
+  { skill_set_name: "Data Structures and Algorithms", level: 4 },
+  { skill_set_name: "AI Native Engineering", level: 3 },
+  { skill_set_name: "Software Engineering", level: 4 },
+];
+
+function getMatchLabel(score: number) {
+  if (score >= 85) return "Excellent Match";
+  if (score >= 70) return "Strong Match";
+  if (score >= 55) return "Good Match";
+  return "Needs Preparation";
+}
+
+export default function SkillMatchPage() {
+  const [skills, setSkills] = useState<StudentSkill[]>(defaultSkills);
+  const [results, setResults] = useState<MatchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  const averageLevel = useMemo(() => {
+    const total = skills.reduce((sum, skill) => sum + skill.level, 0);
+    return Math.round((total / skills.length) * 10) / 10;
+  }, [skills]);
+
+  function updateSkillLevel(skillName: string, level: number) {
+    setSkills((prev) =>
+      prev.map((skill) =>
+        skill.skill_set_name === skillName ? { ...skill, level } : skill
+      )
+    );
+  }
+
+  async function handleMatch() {
+    setLoading(true);
+    setHasSearched(true);
+
+    try {
+      const response = await fetch("/api/skill-match", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          skills,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to calculate skill match");
+      }
+
+      setResults(data.results || []);
+    } catch (error) {
+      console.error(error);
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="relative min-h-screen overflow-hidden bg-black px-4 py-10 text-white md:px-8">
+      <div className="pointer-events-none absolute left-[-10%] top-[-20%] h-96 w-96 animate-pulse rounded-full bg-white/10 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-[-20%] right-[-10%] h-96 w-96 animate-pulse rounded-full bg-zinc-700/20 blur-3xl" />
+
+      <div className="relative z-10 mx-auto max-w-7xl">
+        <div className="mb-6">
+          <Link
+            href="/companies"
+            className="text-sm font-medium text-zinc-400 transition hover:text-white"
+          >
+            ← Back to Companies
+          </Link>
+        </div>
+
+        <section className="mb-8">
+          <p className="text-sm font-medium uppercase tracking-[0.25em] text-zinc-500">
+            Skill Match
+          </p>
+
+          <div className="mt-3 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+                Find Your Best Companies
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 md:text-base">
+                Enter your current skill levels and discover the top 5 companies
+                that match your preparation.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-zinc-950/80 px-5 py-4 shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+              <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                Average Level
+              </p>
+              <p className="mt-1 text-3xl font-bold">{averageLevel}/7</p>
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
+          <Card className="h-fit border-white/10 bg-zinc-950/80 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+            <CardHeader>
+              <CardTitle>Enter Your Skills</CardTitle>
+              <CardDescription className="text-zinc-400">
+                Choose your current level for each skill from 1 to 7.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <div className="space-y-6">
+                {skills.map((skill) => (
+                  <div key={skill.skill_set_name}>
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-white">
+                          {skill.skill_set_name}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          Student level
+                        </p>
+                      </div>
+
+                      <span className="rounded-full border border-white/10 bg-black/40 px-3 py-1 text-sm font-semibold">
+                        {skill.level}/7
+                      </span>
+                    </div>
+
+                    <input
+                      type="range"
+                      min="1"
+                      max="7"
+                      value={skill.level}
+                      onChange={(event) =>
+                        updateSkillLevel(
+                          skill.skill_set_name,
+                          Number(event.target.value)
+                        )
+                      }
+                      className="w-full accent-white"
+                    />
+
+                    <div className="mt-1 flex justify-between text-[10px] text-zinc-600">
+                      <span>Beginner</span>
+                      <span>Advanced</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={handleMatch}
+                disabled={loading}
+                className="mt-8 w-full rounded-2xl bg-white px-5 py-3 text-sm font-bold text-black shadow-[0_18px_50px_rgba(255,255,255,0.12)] transition hover:-translate-y-1 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? "Finding Matches..." : "Find Best 5 Companies"}
+              </button>
+            </CardContent>
+          </Card>
+
+          <section>
+            {!hasSearched ? (
+              <Card className="border-white/10 bg-zinc-950/80 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+                <CardHeader>
+                  <CardTitle>Your matches will appear here</CardTitle>
+                  <CardDescription className="text-zinc-400">
+                    Adjust your skill levels and click the match button to see
+                    the best companies for your profile.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent>
+                  <div className="rounded-3xl border border-white/10 bg-black/30 p-8 text-center">
+                    <p className="text-5xl font-bold">Top 5</p>
+                    <p className="mt-3 text-sm text-zinc-400">
+                      Companies will be ranked by skill match percentage,
+                      matched skills, and preparation gaps.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : results.length > 0 ? (
+              <div className="space-y-5">
+                {results.map((company, index) => (
+                  <Card
+                    key={company.company_id}
+                    className="group border-white/10 bg-zinc-950/80 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-2 hover:rotate-[0.4deg] hover:shadow-[0_36px_100px_rgba(0,0,0,0.65)]"
+                  >
+                    <CardContent className="p-5">
+                      <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <span className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/40 text-sm font-bold">
+                              {index + 1}
+                            </span>
+
+                            <div>
+                              <h2 className="text-xl font-bold">
+                                {company.short_name || company.name}
+                              </h2>
+                              <p className="text-sm text-zinc-400">
+                                {company.category || "Company"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <p className="mt-4 max-w-2xl text-sm leading-6 text-zinc-400">
+                            {company.overview_preview ||
+                              "Explore this company profile to understand its business, skills, and placement suitability."}
+                          </p>
+                        </div>
+
+                        <div className="min-w-[160px] rounded-2xl border border-white/10 bg-black/30 p-4 text-center">
+                          <p className="text-4xl font-bold">
+                            {company.match_percentage}%
+                          </p>
+                          <p className="mt-1 text-sm text-zinc-400">
+                            {getMatchLabel(company.match_percentage)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 h-2 overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-white"
+                          style={{
+                            width: `${Math.min(
+                              company.match_percentage,
+                              100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+
+                      <div className="mt-5 grid gap-4 md:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                            Matched Skills
+                          </p>
+
+                          {company.matched_skills.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                              {company.matched_skills.map((skill) => (
+                                <span
+                                  key={skill}
+                                  className="rounded-full border border-white/10 bg-white px-3 py-1 text-xs font-semibold text-black"
+                                >
+                                  {skill}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-zinc-500">
+                              No exact skill matches yet.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+                          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                            Preparation Gaps
+                          </p>
+
+                          {company.gap_skills.length > 0 ? (
+                            <div className="space-y-2">
+                              {company.gap_skills.slice(0, 3).map((gap) => (
+                                <div
+                                  key={gap.skill}
+                                  className="flex items-center justify-between gap-3 text-sm"
+                                >
+                                  <span className="text-zinc-300">
+                                    {gap.skill}
+                                  </span>
+                                  <span className="text-zinc-500">
+                                    Need +{gap.gap}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-zinc-500">
+                              No major gaps. You are well aligned.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex flex-wrap gap-3">
+                        <Link
+                          href={`/companies/${company.company_id}`}
+                          className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+                        >
+                          View Profile
+                        </Link>
+
+                        <Link
+                          href={`/compare?ids=${company.company_id}`}
+                          className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                        >
+                          Compare
+                        </Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card className="border-white/10 bg-zinc-950/80 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+                <CardHeader>
+                  <CardTitle>No matches found</CardTitle>
+                  <CardDescription className="text-zinc-400">
+                    Try increasing your skill levels or adjusting your inputs.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )}
+          </section>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+Code for app/api/skill-match/route.ts:
+
+import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
+
+type StudentSkill = {
+  skill_set_name: string;
+  level: number;
+};
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const studentSkills: StudentSkill[] = body.skills || [];
+
+    if (!studentSkills.length) {
+      return NextResponse.json(
+        { error: "Student skills are required" },
+        { status: 400 }
+      );
+    }
+
+    const skillNames = studentSkills.map((skill) => skill.skill_set_name);
+
+    const { data: companySkills, error: skillsError } = await supabase
+      .from("company_skills_view")
+      .select("*")
+      .in("skill_set_name", skillNames);
+
+    if (skillsError) {
+      return NextResponse.json(
+        { error: skillsError.message },
+        { status: 500 }
+      );
+    }
+
+    const companyIds = Array.from(
+      new Set((companySkills || []).map((item) => item.company_id))
+    );
+
+    if (companyIds.length === 0) {
+      return NextResponse.json({ results: [] });
+    }
+
+    const { data: companies, error: companiesError } = await supabase
+      .from("company_search_view")
+      .select("*")
+      .in("company_id", companyIds);
+
+    if (companiesError) {
+      return NextResponse.json(
+        { error: companiesError.message },
+        { status: 500 }
+      );
+    }
+
+    const results = (companies || [])
+      .map((company) => {
+        const requiredSkills = (companySkills || []).filter(
+          (skill) => skill.company_id === company.company_id
+        );
+
+        let totalRequiredScore = 0;
+        let matchedScore = 0;
+
+        const matchedSkills: string[] = [];
+        const gapSkills: {
+          skill: string;
+          student_level: number;
+          required_level: number;
+          gap: number;
+        }[] = [];
+
+        requiredSkills.forEach((requiredSkill) => {
+          const studentSkill = studentSkills.find(
+            (skill) =>
+              skill.skill_set_name === requiredSkill.skill_set_name
+          );
+
+          if (!studentSkill) return;
+
+          const requiredLevel = Number(requiredSkill.required_level || 0);
+          const studentLevel = Number(studentSkill.level || 0);
+
+          totalRequiredScore += requiredLevel;
+
+          if (studentLevel >= requiredLevel) {
+            matchedScore += requiredLevel;
+            matchedSkills.push(requiredSkill.skill_set_name);
+          } else {
+            matchedScore += studentLevel;
+
+            gapSkills.push({
+              skill: requiredSkill.skill_set_name,
+              student_level: studentLevel,
+              required_level: requiredLevel,
+              gap: requiredLevel - studentLevel,
+            });
+          }
+        });
+
+        const matchPercentage =
+          totalRequiredScore > 0
+            ? Math.round((matchedScore / totalRequiredScore) * 100)
+            : 0;
+
+        return {
+          company_id: company.company_id,
+          name: company.name,
+          short_name: company.short_name,
+          category: company.category,
+          overview_preview: company.overview_preview,
+          student_fit_score: company.student_fit_score,
+          match_percentage: matchPercentage,
+          matched_skills: matchedSkills,
+          gap_skills: gapSkills.sort((a, b) => b.gap - a.gap),
+        };
+      })
+      .sort((a, b) => {
+        if (b.match_percentage !== a.match_percentage) {
+          return b.match_percentage - a.match_percentage;
+        }
+
+        return (b.student_fit_score || 0) - (a.student_fit_score || 0);
+      })
+      .slice(0, 5);
+
+    return NextResponse.json({ results });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to calculate skill match" },
+      { status: 500 }
+    );
+  }
+}
+
+Important notes:
+- This page must be a client component because it uses sliders and live input.
+- The matching result should not be static.
+- The API should calculate results dynamically from Supabase.
+- Show only the best 5 companies.
+- Use company_skills_view to calculate matching.
+- Use company_search_view to show company details.
+- Keep the moving background subtle.
+- Keep the 3D effect light and clean.
+- Do not add Redux, Zustand, or a heavy chart library.
+- Do not hardcode company results.
+```
+
+Ai chabot page:
+AI CHATBOT PAGE MASTER PROMPT
+
+Build the AI Chatbot page for the Placement Intelligence System.
+
+Route:
+
+* /chat
+
+Purpose:
+Create a clean AI chatbot page where students can ask questions about companies, skills, placements, company comparison, preparation gaps, work culture, technology exposure, financials, and career suitability.
+
+The chatbot must:
+
+* Have only text chat functionality.
+* No file upload.
+* No image upload.
+* No audio recording.
+* No microphone button.
+* No paperclip button.
+* No search/think/canvas toggles.
+* Use local Ollama for AI response generation.
+* Access Supabase data dynamically.
+* Use the student skill inputs from the Skill Match page.
+* Suggest companies based on the student’s skill levels.
+* Answer only using Supabase company data and the student’s skill profile.
+* If the data is not available in Supabase, say: “This information is not available in the platform data yet.”
+
+Design style:
+Use the uploaded chatbot input design style as reference:
+
+* Dark background.
+* Rounded 3xl chat input.
+* Dark gray input surface.
+* Clean textarea.
+* White circular send button.
+* Smooth hover effects.
+* Subtle 3D card shadow.
+* Simple animated background glow.
+* Premium but minimal UI.
+* Similar visual language as Landing, Company Profile, Compare, and Skill Match pages.
+* Keep the page readable and not flashy.
+
+Important:
+The uploaded reference has upload, audio, search, think, canvas, image preview, and recording features.
+Do not include those features.
+Only keep:
+
+* Textarea input.
+* Send button.
+* Loading state.
+* Chat messages.
+* Suggested prompt chips.
+* Supabase-grounded responses.
+
+Data access:
+The AI chatbot should access complete Supabase company data, not only the existing views.
+
+It can query:
+
+* company_search_view
+* company_profile_view
+* company_compare_view
+* company_student_fit_view
+* company_locations_view
+* company_ai_context_view
+* company_skills_view
+
+It may also query other public Supabase tables if they exist and are relevant, but only with SELECT queries.
+Do not create migrations.
+Do not modify schema.
+Do not insert, update, or delete data.
+Do not expose raw database errors to the user.
+
+Student skill context:
+The Skill Match page must save the latest student skill inputs to localStorage.
+
+Use this localStorage key:
+
+* placement_student_skills
+
+Example saved value:
+[
+{ "skill_set_name": "Coding", "level": 4 },
+{ "skill_set_name": "SQL and Design", "level": 5 },
+{ "skill_set_name": "Communication Skills", "level": 4 },
+{ "skill_set_name": "Data Structures and Algorithms", "level": 3 },
+{ "skill_set_name": "AI Native Engineering", "level": 3 },
+{ "skill_set_name": "Software Engineering", "level": 4 }
+]
+
+On the Chat page:
+
+* Read placement_student_skills from localStorage.
+* Send it with every chat request.
+* If no skill data exists, still allow chat.
+* Show a small note: “Skill profile not found. Complete Skill Match for better suggestions.”
+* If skill data exists, show: “Using your latest Skill Match profile.”
+
+Chatbot capabilities:
+The chatbot should be able to answer questions like:
+
+* Which company is best for my skills?
+* Compare Accenture and Fractal for me.
+* What skills should I improve for Google?
+* Which companies have low burnout risk?
+* Which companies are good for AI roles?
+* Which companies have strong learning culture?
+* Which companies match my current skill profile?
+* What are my preparation gaps?
+* Suggest top 5 companies for me.
+* Explain why a company is a good or bad fit.
+* What skills are required for this company?
+
+Response behavior:
+
+* Be clear and student-friendly.
+* Give practical suggestions.
+* Prefer bullet points for comparison.
+* Use company names exactly from Supabase.
+* Mention match reasoning using student skills when available.
+* Do not hallucinate missing fields.
+* If asked about a company not found in Supabase, say it is not available in the platform data yet.
+* If asked for career advice, base advice on company data and student skill levels.
+
+Files to create or update:
+
+1. app/chat/page.tsx
+2. app/api/chat/route.ts
+3. lib/ollama.ts
+4. lib/chat-context.ts
+5. app/skill-match/page.tsx update only to save student skills in localStorage
+
+Code for app/chat/page.tsx:
+
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { ArrowUp, Bot, UserRound } from "lucide-react";
+import {
+Card,
+CardContent,
+CardDescription,
+CardHeader,
+CardTitle,
+} from "@/components/ui/card";
+
+type StudentSkill = {
+skill_set_name: string;
+level: number;
+};
+
+type ChatMessage = {
+role: "user" | "assistant";
+content: string;
+};
+
+const suggestedPrompts = [
+"Suggest top 5 companies for my skills",
+"What skills should I improve?",
+"Which company has the best student fit?",
+"Compare companies for AI roles",
+];
+
+function cn(...classes: (string | false | null | undefined)[]) {
+return classes.filter(Boolean).join(" ");
+}
+
+export default function ChatPage() {
+const [messages, setMessages] = useState<ChatMessage[]>([
+{
+role: "assistant",
+content:
+"Hi, I am your placement intelligence assistant. Ask me about companies, skills, fit score, preparation gaps, work culture, or company comparison.",
+},
+]);
+
+const [input, setInput] = useState("");
+const [studentSkills, setStudentSkills] = useState<StudentSkill[]>([]);
+const [loading, setLoading] = useState(false);
+const bottomRef = useRef<HTMLDivElement>(null);
+
+const hasSkillProfile = studentSkills.length > 0;
+
+useEffect(() => {
+const savedSkills = localStorage.getItem("placement_student_skills");
+
+```
+if (savedSkills) {
+  try {
+    const parsedSkills = JSON.parse(savedSkills);
+    if (Array.isArray(parsedSkills)) {
+      setStudentSkills(parsedSkills);
+    }
+  } catch {
+    setStudentSkills([]);
+  }
+}
+```
+
+}, []);
+
+useEffect(() => {
+bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+}, [messages, loading]);
+
+const averageLevel = useMemo(() => {
+if (!studentSkills.length) return null;
+
+```
+const total = studentSkills.reduce((sum, skill) => sum + skill.level, 0);
+return Math.round((total / studentSkills.length) * 10) / 10;
+```
+
+}, [studentSkills]);
+
+async function sendMessage(messageText?: string) {
+const finalMessage = (messageText || input).trim();
+
+```
+if (!finalMessage || loading) return;
+
+const userMessage: ChatMessage = {
+  role: "user",
+  content: finalMessage,
+};
+
+setMessages((prev) => [...prev, userMessage]);
+setInput("");
+setLoading(true);
+
+try {
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message: finalMessage,
+      history: messages.slice(-8),
+      studentSkills,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to get response");
+  }
+
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "assistant",
+      content: data.answer,
+    },
+  ]);
+} catch {
+  setMessages((prev) => [
+    ...prev,
+    {
+      role: "assistant",
+      content:
+        "I could not generate a response right now. Please check Ollama and Supabase configuration.",
+    },
+  ]);
+} finally {
+  setLoading(false);
+}
+```
+
+}
+
+function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+if (event.key === "Enter" && !event.shiftKey) {
+event.preventDefault();
+sendMessage();
+}
+}
+
+return ( <main className="relative min-h-screen overflow-hidden bg-black px-4 py-8 text-white md:px-8"> <div className="pointer-events-none absolute left-[-10%] top-[-20%] h-96 w-96 animate-pulse rounded-full bg-white/10 blur-3xl" /> <div className="pointer-events-none absolute bottom-[-20%] right-[-10%] h-96 w-96 animate-pulse rounded-full bg-zinc-700/20 blur-3xl" />
+
+```
+  <div className="relative z-10 mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col">
+    <div className="mb-6 flex items-center justify-between gap-4">
+      <Link
+        href="/dashboard"
+        className="text-sm font-medium text-zinc-400 transition hover:text-white"
+      >
+        ← Back to Dashboard
+      </Link>
+
+      <Link
+        href="/skill-match"
+        className="rounded-xl border border-white/10 bg-zinc-950/80 px-4 py-2 text-sm font-medium text-zinc-200 shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:bg-zinc-900"
+      >
+        Update Skills
+      </Link>
+    </div>
+
+    <section className="mb-6">
+      <p className="text-sm font-medium uppercase tracking-[0.25em] text-zinc-500">
+        AI Career Assistant
+      </p>
+
+      <div className="mt-3 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+            Placement Chatbot
+          </h1>
+
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 md:text-base">
+            Ask questions about companies, preparation gaps, required
+            skills, student-fit score, work culture, technology exposure,
+            and company recommendations.
+          </p>
+        </div>
+
+        <Card className="w-fit border-white/10 bg-zinc-950/80 text-white shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
+          <CardContent className="p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+              Skill Profile
+            </p>
+            <p className="mt-1 text-sm font-medium text-zinc-200">
+              {hasSkillProfile
+                ? `Using latest Skill Match • Avg ${averageLevel}/7`
+                : "Not found"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+
+    <div className="grid flex-1 gap-6 lg:grid-cols-[280px_1fr]">
+      <aside className="hidden lg:block">
+        <Card className="sticky top-8 border-white/10 bg-zinc-950/80 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+          <CardHeader>
+            <CardTitle>Ask about</CardTitle>
+            <CardDescription className="text-zinc-400">
+              Use platform data to guide your preparation.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {suggestedPrompts.map((prompt) => (
+              <button
+                key={prompt}
+                onClick={() => sendMessage(prompt)}
+                className="w-full rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-left text-sm text-zinc-300 transition hover:-translate-y-1 hover:bg-white hover:text-black"
+              >
+                {prompt}
+              </button>
+            ))}
+
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-zinc-500">
+                Context
+              </p>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                {hasSkillProfile
+                  ? "The assistant will use your saved skill levels while suggesting companies."
+                  : "Complete Skill Match first for personalized suggestions."}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </aside>
+
+      <section className="flex min-h-[620px] flex-col rounded-3xl border border-white/10 bg-zinc-950/80 shadow-[0_28px_90px_rgba(0,0,0,0.55)]">
+        <div className="border-b border-white/10 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/40">
+              <Bot className="h-5 w-5 text-zinc-200" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold">Placement Intelligence AI</h2>
+              <p className="text-xs text-zinc-500">
+                Supabase-grounded company assistant
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-6">
+          {!hasSkillProfile ? (
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-400">
+              Skill profile not found. Complete Skill Match for better
+              suggestions.
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-zinc-400">
+              Using your latest Skill Match profile for personalized
+              recommendations.
+            </div>
+          )}
+
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={cn(
+                "flex gap-3",
+                message.role === "user" && "justify-end"
+              )}
+            >
+              {message.role === "assistant" ? (
+                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40">
+                  <Bot className="h-4 w-4 text-zinc-300" />
+                </div>
+              ) : null}
+
+              <div
+                className={cn(
+                  "max-w-[85%] rounded-3xl px-5 py-4 text-sm leading-7 shadow-[0_14px_45px_rgba(0,0,0,0.35)]",
+                  message.role === "user"
+                    ? "bg-white text-black"
+                    : "border border-white/10 bg-black/35 text-zinc-200"
+                )}
+              >
+                <p className="whitespace-pre-wrap">{message.content}</p>
+              </div>
+
+              {message.role === "user" ? (
+                <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-black">
+                  <UserRound className="h-4 w-4" />
+                </div>
+              ) : null}
+            </div>
+          ))}
+
+          {loading ? (
+            <div className="flex gap-3">
+              <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40">
+                <Bot className="h-4 w-4 text-zinc-300" />
+              </div>
+
+              <div className="rounded-3xl border border-white/10 bg-black/35 px-5 py-4 text-sm text-zinc-400">
+                Thinking with company data...
+              </div>
+            </div>
+          ) : null}
+
+          <div ref={bottomRef} />
+        </div>
+
+        <div className="border-t border-white/10 p-4">
+          <div
+            className={cn(
+              "rounded-3xl border border-[#444444] bg-[#1F2023] p-2 shadow-[0_8px_30px_rgba(0,0,0,0.24)] transition-all duration-300",
+              loading && "border-white/30"
+            )}
+          >
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={loading}
+              placeholder="Ask about companies, skills, fit score, or preparation gaps..."
+              rows={1}
+              className="max-h-40 min-h-[48px] w-full resize-none rounded-md border-none bg-transparent px-3 py-3 text-base text-gray-100 placeholder:text-gray-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+            />
+
+            <div className="flex items-center justify-between px-1 pt-2">
+              <p className="text-xs text-zinc-500">
+                Text chat only • Supabase-grounded answers
+              </p>
+
+              <button
+                onClick={() => sendMessage()}
+                disabled={loading || !input.trim()}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-black transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ArrowUp className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+```
+
+);
+}
+
+Code for app/api/chat/route.ts:
+
+import { NextResponse } from "next/server";
+import { buildChatContext } from "@/lib/chat-context";
+import { askOllama } from "@/lib/ollama";
+
+type StudentSkill = {
+skill_set_name: string;
+level: number;
+};
+
+type ChatMessage = {
+role: "user" | "assistant";
+content: string;
+};
+
+export async function POST(request: Request) {
+try {
+const body = await request.json();
+
+```
+const message = String(body.message || "").trim();
+const history: ChatMessage[] = body.history || [];
+const studentSkills: StudentSkill[] = body.studentSkills || [];
+
+if (!message) {
+  return NextResponse.json(
+    { error: "Message is required" },
+    { status: 400 }
+  );
+}
+
+const context = await buildChatContext({
+  userMessage: message,
+  studentSkills,
+});
+
+const answer = await askOllama({
+  userMessage: message,
+  history,
+  studentSkills,
+  context,
+});
+
+return NextResponse.json({
+  answer,
+});
+```
+
+} catch {
+return NextResponse.json(
+{
+error: "Failed to generate chat response",
+},
+{ status: 500 }
+);
+}
+}
+
+Code for lib/ollama.ts:
+
+type StudentSkill = {
+skill_set_name: string;
+level: number;
+};
+
+type ChatMessage = {
+role: "user" | "assistant";
+content: string;
+};
+
+type AskOllamaParams = {
+userMessage: string;
+history: ChatMessage[];
+studentSkills: StudentSkill[];
+context: string;
+};
+
+export async function askOllama({
+userMessage,
+history,
+studentSkills,
+context,
+}: AskOllamaParams) {
+const ollamaUrl = process.env.OLLAMA_URL || "http://localhost:11434";
+const ollamaModel = process.env.OLLAMA_MODEL || "llama3.1";
+
+const systemPrompt = `
+You are the AI Career Assistant for the Placement Intelligence System.
+
+You help students understand companies before applying.
+
+Rules:
+
+* Use only the Supabase platform data provided in CONTEXT.
+* Use the student's skill profile when available.
+* Do not invent company facts.
+* Do not use outside knowledge.
+* If information is missing, say: "This information is not available in the platform data yet."
+* Give practical student-friendly guidance.
+* Prefer concise answers.
+* For recommendations, explain why each company is suggested.
+* For skill gaps, compare student skill levels with company required levels.
+* For company comparisons, use only the provided context.
+* Never mention internal database table names unless the user asks technically.
+  `;
+
+  const recentHistory = history
+  .slice(-6)
+  .map((item) => `${item.role.toUpperCase()}: ${item.content}`)
+  .join("\n");
+
+  const studentSkillText =
+  studentSkills.length > 0
+  ? studentSkills
+  .map((skill) => `- ${skill.skill_set_name}: ${skill.level}/7`)
+  .join("\n")
+  : "No student skill profile provided.";
+
+  const prompt = `
+  ${systemPrompt}
+
+STUDENT SKILL PROFILE:
+${studentSkillText}
+
+CONTEXT FROM SUPABASE:
+${context}
+
+RECENT CHAT HISTORY:
+${recentHistory || "No previous chat history."}
+
+USER QUESTION:
+${userMessage}
+
+Answer:
+`;
+
+const response = await fetch(`${ollamaUrl}/api/generate`, {
+method: "POST",
+headers: {
+"Content-Type": "application/json",
+},
+body: JSON.stringify({
+model: ollamaModel,
+prompt,
+stream: false,
+}),
+});
+
+if (!response.ok) {
+throw new Error("Ollama request failed");
+}
+
+const data = await response.json();
+
+return data.response || "This information is not available in the platform data yet.";
+}
+
+Code for lib/chat-context.ts:
+
+import { supabase } from "@/lib/supabase";
+
+type StudentSkill = {
+skill_set_name: string;
+level: number;
+};
+
+type BuildChatContextParams = {
+userMessage: string;
+studentSkills: StudentSkill[];
+};
+
+function safeText(value: unknown) {
+if (value === null || value === undefined) return "Not available";
+if (Array.isArray(value)) return value.join(", ");
+if (typeof value === "object") return JSON.stringify(value);
+return String(value);
+}
+
+function extractKeywords(message: string) {
+return message
+.toLowerCase()
+.replace(/[^a-z0-9\s]/g, " ")
+.split(/\s+/)
+.filter((word) => word.length > 2)
+.slice(0, 12);
+}
+
+export async function buildChatContext({
+userMessage,
+studentSkills,
+}: BuildChatContextParams) {
+const keywords = extractKeywords(userMessage);
+
+const companyQuery = keywords.length > 0 ? keywords.join(" ") : userMessage;
+
+const { data: companyAiContext } = await supabase
+.from("company_ai_context_view")
+.select("*")
+.or(
+`name.ilike.%${companyQuery}%,short_name.ilike.%${companyQuery}%,category.ilike.%${companyQuery}%`
+)
+.limit(8);
+
+const { data: companySearchData } = await supabase
+.from("company_search_view")
+.select("*")
+.or(
+`name.ilike.%${companyQuery}%,short_name.ilike.%${companyQuery}%,category.ilike.%${companyQuery}%`
+)
+.limit(8);
+
+const { data: topFitCompanies } = await supabase
+.from("company_student_fit_view")
+.select("*")
+.order("student_fit_score", { ascending: false })
+.limit(10);
+
+const skillNames = studentSkills.map((skill) => skill.skill_set_name);
+
+const { data: relevantSkills } =
+skillNames.length > 0
+? await supabase
+.from("company_skills_view")
+.select("*")
+.in("skill_set_name", skillNames)
+.limit(300)
+: { data: [] as any[] };
+
+const relevantCompanyIds = Array.from(
+new Set([
+...(companyAiContext || []).map((item: any) => item.company_id),
+...(companySearchData || []).map((item: any) => item.company_id),
+...(topFitCompanies || []).map((item: any) => item.company_id),
+...(relevantSkills || []).map((item: any) => item.company_id),
+])
+).slice(0, 20);
+
+const { data: fullProfiles } =
+relevantCompanyIds.length > 0
+? await supabase
+.from("company_profile_view")
+.select("*")
+.in("company_id", relevantCompanyIds)
+.limit(20)
+: { data: [] as any[] };
+
+const { data: compareData } =
+relevantCompanyIds.length > 0
+? await supabase
+.from("company_compare_view")
+.select("*")
+.in("company_id", relevantCompanyIds)
+.limit(20)
+: { data: [] as any[] };
+
+const matchedCompanyScores = calculateSkillMatches({
+studentSkills,
+companySkills: relevantSkills || [],
+});
+
+const contextParts: string[] = [];
+
+contextParts.push("TOP STUDENT FIT COMPANIES:");
+contextParts.push(JSON.stringify(topFitCompanies || [], null, 2));
+
+contextParts.push("RELEVANT COMPANY AI CONTEXT:");
+contextParts.push(JSON.stringify(companyAiContext || [], null, 2));
+
+contextParts.push("RELEVANT COMPANY SEARCH DATA:");
+contextParts.push(JSON.stringify(companySearchData || [], null, 2));
+
+contextParts.push("FULL COMPANY PROFILES:");
+contextParts.push(JSON.stringify(fullProfiles || [], null, 2));
+
+contextParts.push("COMPANY COMPARISON DATA:");
+contextParts.push(JSON.stringify(compareData || [], null, 2));
+
+contextParts.push("RELEVANT COMPANY SKILLS:");
+contextParts.push(JSON.stringify(relevantSkills || [], null, 2));
+
+contextParts.push("STUDENT SKILL MATCH SCORES:");
+contextParts.push(JSON.stringify(matchedCompanyScores, null, 2));
+
+return contextParts.join("\n\n").slice(0, 24000);
+}
+
+function calculateSkillMatches({
+studentSkills,
+companySkills,
+}: {
+studentSkills: StudentSkill[];
+companySkills: any[];
+}) {
+if (!studentSkills.length || !companySkills.length) return [];
+
+const grouped = new Map<number, any[]>();
+
+companySkills.forEach((skill) => {
+if (!grouped.has(skill.company_id)) {
+grouped.set(skill.company_id, []);
+}
+
+```
+grouped.get(skill.company_id)?.push(skill);
+```
+
+});
+
+const results = Array.from(grouped.entries()).map(
+([companyId, requiredSkills]) => {
+let totalRequiredScore = 0;
+let matchedScore = 0;
+
+```
+  const matchedSkills: string[] = [];
+  const gapSkills: {
+    skill: string;
+    student_level: number;
+    required_level: number;
+    gap: number;
+  }[] = [];
+
+  requiredSkills.forEach((requiredSkill) => {
+    const studentSkill = studentSkills.find(
+      (skill) => skill.skill_set_name === requiredSkill.skill_set_name
+    );
+
+    if (!studentSkill) return;
+
+    const studentLevel = Number(studentSkill.level || 0);
+    const requiredLevel = Number(requiredSkill.required_level || 0);
+
+    totalRequiredScore += requiredLevel;
+
+    if (studentLevel >= requiredLevel) {
+      matchedScore += requiredLevel;
+      matchedSkills.push(requiredSkill.skill_set_name);
+    } else {
+      matchedScore += studentLevel;
+
+      gapSkills.push({
+        skill: requiredSkill.skill_set_name,
+        student_level: studentLevel,
+        required_level: requiredLevel,
+        gap: requiredLevel - studentLevel,
+      });
+    }
+  });
+
+  return {
+    company_id: companyId,
+    match_percentage:
+      totalRequiredScore > 0
+        ? Math.round((matchedScore / totalRequiredScore) * 100)
+        : 0,
+    matched_skills: matchedSkills,
+    gap_skills: gapSkills.sort((a, b) => b.gap - a.gap),
+  };
+}
+```
+
+);
+
+return results
+.sort((a, b) => b.match_percentage - a.match_percentage)
+.slice(0, 10);
+}
+
+Update app/skill-match/page.tsx:
+Whenever the student updates skill levels or clicks “Find Best 5 Companies”, save the current skills to localStorage.
+
+Add this inside the Skill Match page:
+
+useEffect(() => {
+localStorage.setItem("placement_student_skills", JSON.stringify(skills));
+}, [skills]);
+
+Also make sure the skills state uses this default format:
+
+[
+{ skill_set_name: "Coding", level: 4 },
+{ skill_set_name: "SQL and Design", level: 4 },
+{ skill_set_name: "Communication Skills", level: 4 },
+{ skill_set_name: "Data Structures and Algorithms", level: 4 },
+{ skill_set_name: "AI Native Engineering", level: 3 },
+{ skill_set_name: "Software Engineering", level: 4 }
+]
+
+Environment variables:
+Add these to .env.local:
+
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1
+
+Important implementation notes:
+
+* The Chat page must be a client component.
+* The API route must call Supabase and Ollama.
+* The frontend must not call Ollama directly.
+* The frontend must send student skill profile to /api/chat.
+* The API route should build Supabase context first, then pass it to Ollama.
+* Do not use file upload.
+* Do not use audio.
+* Do not use microphone.
+* Do not use paperclip.
+* Do not include image preview.
+* Do not include recording UI.
+* Do not include web search toggle.
+* Do not include canvas toggle.
+* Do not include think toggle.
+* Do not use external internet search.
+* Use only Supabase data and local student skill profile.
+* Keep all database access read-only.
+* Do not expose Supabase keys other than the normal public anon key.
+* Do not expose service role key.
+* Do not display raw JSON to the user.
+* Do not hallucinate company facts.
+* Keep UI dark, clean, rounded, and premium.
+* Keep the prompt input visually similar to the uploaded reference but simplified for text-only chat.

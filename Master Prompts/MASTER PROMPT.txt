@@ -1,0 +1,704 @@
+MASTER PROMPT — FUNCTIONALITY, DATA, API, INTEGRATION, AND TESTING PHASE
+
+You are working on the Placement Intelligence System by Team RAGNAROK.
+
+The UI design prompts are already prepared separately. Do not redesign the UI unless functionality requires small adjustments. Your task is to implement the remaining functionality, data access, API routes, Supabase integration, Ollama integration, localStorage skill profile, navigation, error handling, and testing.
+
+PROJECT STACK
+
+Use:
+
+* Next.js App Router
+* TypeScript
+* Tailwind CSS
+* Supabase
+* Local Ollama
+* Existing Card/components where available
+
+Do not use:
+
+* Flask
+* Python backend
+* Prisma
+* Redux
+* Zustand
+* Heavy UI libraries
+* Authentication for now
+* Database migrations unless explicitly asked
+
+IMPORTANT CAUTIONS
+
+1. Do not change the database schema.
+2. Do not create Supabase migrations.
+3. Do not rename, delete, or modify existing Supabase tables, columns, or views.
+4. Use existing Supabase views/tables only.
+5. All database access must be read-only.
+6. Do not use INSERT, UPDATE, DELETE, ALTER, DROP, CREATE, or TRUNCATE.
+7. Do not expose service role keys.
+8. Use only the public anon key in frontend-safe code.
+9. Do not hardcode company results.
+10. Fetch real data from Supabase.
+11. If data is missing, show “Not available”.
+12. After completing each section, test the route and fix TypeScript errors.
+13. Run lint/build checks after each phase if available.
+14. Preserve existing working files unless changes are required.
+15. Keep code simple, readable, and easy to understand.
+
+ENVIRONMENT SETUP
+
+Create or verify `.env.local` uses:
+
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1
+
+Do not place private keys in frontend code.
+
+Ollama GPU note:
+The Next.js app cannot force Ollama to use GPU. Ollama GPU usage must be handled by the local Ollama installation and system configuration. The app should only connect to the configured Ollama URL and model.
+
+STEP 1 — SUPABASE CLIENT SETUP
+
+Create or verify:
+
+File:
+
+* lib/supabase.ts
+
+Requirement:
+Create a browser/server-safe Supabase client using:
+
+* NEXT_PUBLIC_SUPABASE_URL
+* NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+Expected behavior:
+
+* Throw a clear error if environment variables are missing.
+* Export `supabase`.
+
+Implementation:
+
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+throw new Error("Missing Supabase environment variables");
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+STEP 2 — TYPES SETUP
+
+Create or update:
+
+File:
+
+* types/company.ts
+
+Add shared types for:
+
+CompanySearchItem:
+
+* company_id
+* name
+* short_name
+* logo_url
+* category
+* nature_of_company
+* employee_size
+* office_count
+* website_url
+* linkedin_url
+* overview_preview
+* student_fit_score
+* top_skills
+* office_cities
+* operating_countries
+* profitability_status
+* yoy_growth_rate
+* valuation
+* skill_relevance
+* burnout_risk
+* ai_ml_adoption_level
+
+CompanyProfile:
+Include all fields used on the company profile page:
+
+* company_id
+* name
+* short_name
+* category
+* nature_of_company
+* employee_size
+* office_count
+* website_url
+* linkedin_url
+* overview_text
+* vision_statement
+* mission_statement
+* student_fit_score
+* positive_signals
+* caution_signals
+* annual_revenue
+* annual_profit
+* valuation
+* yoy_growth_rate
+* profitability_status
+* work_culture_summary
+* manager_quality
+* psychological_safety
+* burnout_risk
+* learning_culture
+* mentorship_availability
+* ai_ml_adoption_level
+* tech_stack
+* skill_relevance
+* exposure_quality
+* office_cities
+* operating_countries
+
+CompanySkill:
+
+* company_id
+* skill_set_id
+* skill_set_name
+* required_level
+* proficiency_name
+
+StudentSkill:
+
+* skill_set_name
+* level
+
+MatchResult:
+
+* company_id
+* name
+* short_name
+* category
+* overview_preview
+* student_fit_score
+* match_percentage
+* matched_skills
+* gap_skills
+
+Use nullable types where needed.
+
+STEP 3 — DATA ACCESS FUNCTIONS
+
+Create or update:
+
+File:
+
+* lib/data.ts
+
+Implement these read-only functions.
+
+1. getCompanies
+
+Purpose:
+Used by `/companies`.
+
+View:
+
+* company_search_view
+
+Params:
+
+* search?: string
+* category?: string
+* minFitScore?: number
+* limit?: number
+
+Behavior:
+
+* Select from company_search_view.
+* Order by student_fit_score descending.
+* Search by name, short_name, or category.
+* Filter by category.
+* Filter by minimum fit score if provided.
+* Return empty array if no data.
+* Throw clear error if Supabase fails.
+
+2. getCompanyById
+
+Purpose:
+Used by `/companies/[id]`.
+
+View:
+
+* company_profile_view
+
+Params:
+
+* companyId: number
+
+Behavior:
+
+* Select single company profile by company_id.
+* Return null if not found.
+* Do not crash the app for missing company.
+
+3. getCompanySkills
+
+Purpose:
+Used by company profile page.
+
+View:
+
+* company_skills_view
+
+Params:
+
+* companyId: number
+
+Behavior:
+
+* Select skills by company_id.
+* Order by required_level descending.
+* Return empty array if missing.
+
+4. getCompaniesForCompare
+
+Purpose:
+Used by `/compare?ids=1,2,3`.
+
+View:
+
+* company_compare_view
+
+Params:
+
+* companyIds: number[]
+
+Behavior:
+
+* Select companies where company_id is in the given IDs.
+* Preserve the same order as URL IDs.
+* Return empty array if no IDs.
+
+5. getCompanySkillsForCompare
+
+Purpose:
+Used by compare page.
+
+View:
+
+* company_skills_view
+
+Params:
+
+* companyIds: number[]
+
+Behavior:
+
+* Select skills where company_id is in the given IDs.
+* Order by skill_set_name ascending.
+* Return empty array if no IDs.
+
+STEP 4 — API HEALTH ROUTE
+
+Create:
+
+File:
+
+* app/api/health/route.ts
+
+Purpose:
+Simple health check for frontend, Supabase, and Ollama configuration.
+
+Behavior:
+Return JSON like:
+
+{
+"status": "ok",
+"supabase": "configured",
+"ollama": "configured"
+}
+
+If env vars are missing, return a clear status but do not expose secrets.
+
+STEP 5 — SKILL MATCH API
+
+Create:
+
+File:
+
+* app/api/skill-match/route.ts
+
+Method:
+
+* POST
+
+Input:
+{
+"skills": [
+{ "skill_set_name": "Coding", "level": 4 }
+]
+}
+
+Use:
+
+* company_skills_view
+* company_search_view
+
+Matching logic:
+
+1. Receive student skills.
+2. Validate that skills array exists.
+3. Get skill names from student input.
+4. Query company_skills_view where skill_set_name is in input skill names.
+5. Group required skills by company_id.
+6. Fetch company details from company_search_view.
+7. For each company:
+
+   * totalRequiredScore = sum of required_level
+   * matchedScore = sum of min(student_level, required_level)
+   * if student level >= required level, add skill to matched_skills
+   * if student level < required level, add to gap_skills
+8. match_percentage = matchedScore / totalRequiredScore * 100
+9. Sort by:
+
+   * match_percentage descending
+   * student_fit_score descending
+10. Return only top 5.
+
+Response:
+{
+"results": [...]
+}
+
+Important:
+
+* Do not hardcode companies.
+* Do not expose raw database errors.
+* Return user-friendly API errors.
+* Keep all queries read-only.
+
+STEP 6 — LOCAL STORAGE SKILL PROFILE
+
+Update:
+
+File:
+
+* app/skill-match/page.tsx
+
+Requirement:
+Whenever student skill levels change, save them to localStorage.
+
+Use key:
+
+* placement_student_skills
+
+Add:
+
+useEffect(() => {
+localStorage.setItem("placement_student_skills", JSON.stringify(skills));
+}, [skills]);
+
+Also ensure:
+
+* Import useEffect.
+* Chat page can read the same key.
+* Skill Match results remain dynamic.
+
+STEP 7 — CHAT CONTEXT BUILDER
+
+Create:
+
+File:
+
+* lib/chat-context.ts
+
+Purpose:
+Build safe, limited, relevant Supabase context for the AI chatbot.
+
+Function:
+
+* buildChatContext({ userMessage, studentSkills })
+
+Inputs:
+
+* userMessage: string
+* studentSkills: StudentSkill[]
+
+Use these existing views:
+
+* company_search_view
+* company_profile_view
+* company_compare_view
+* company_student_fit_view
+* company_locations_view
+* company_ai_context_view
+* company_skills_view
+
+Behavior:
+
+1. Extract simple keywords from userMessage.
+2. Search relevant companies by:
+
+   * name
+   * short_name
+   * category
+3. Always include top student-fit companies.
+4. If studentSkills exist:
+
+   * query company_skills_view for matching skill_set_name values.
+   * calculate skill match scores.
+5. Collect relevant company IDs.
+6. Fetch full profiles and comparison data for relevant IDs.
+7. Build a text context containing:
+
+   * relevant company AI context
+   * profile data
+   * comparison data
+   * skill requirements
+   * top student-fit companies
+   * student skill match scores
+8. Limit context length to avoid oversized prompts.
+9. Return a single string.
+
+Important:
+
+* Queries must be read-only.
+* Do not use broad unlimited selects.
+* Use `.limit()` on all queries.
+* Do not expose raw JSON directly to the user; JSON is only for model context.
+* Keep context focused and relevant.
+
+STEP 8 — OLLAMA INTEGRATION
+
+Create:
+
+File:
+
+* lib/ollama.ts
+
+Function:
+
+* askOllama({ userMessage, history, studentSkills, context })
+
+Use:
+
+* OLLAMA_URL
+* OLLAMA_MODEL
+
+Default values:
+
+* OLLAMA_URL=http://localhost:11434
+* OLLAMA_MODEL=llama3.1
+
+Behavior:
+
+1. Build a system prompt.
+2. Include strict grounding rules.
+3. Include student skill profile if available.
+4. Include recent chat history.
+5. Include user question.
+6. Call Ollama `/api/generate`.
+7. Return `data.response`.
+8. Throw a clear error if Ollama fails.
+
+System prompt rules:
+
+* You are the AI Career Assistant for the Placement Intelligence System.
+* You help students understand companies before applying.
+* Use only the provided Supabase context.
+* Use the student skill profile when available.
+* Do not use outside knowledge.
+* Do not hallucinate company facts.
+* Be practical, simple, and student-friendly.
+* For company suggestions, explain why.
+* For skill gaps, compare student level and required level.
+* For comparisons, use only supplied data.
+* If unavailable, say: “This information is not available in the platform data yet.”
+* If the student asks for a study plan, give a simple preparation plan based on the selected company’s required skills and the student’s current skill levels.
+
+STEP 9 — CHAT API ROUTE
+
+Create:
+
+File:
+
+* app/api/chat/route.ts
+
+Method:
+
+* POST
+
+Input:
+{
+"message": "Which company is best for my skills?",
+"history": [],
+"studentSkills": []
+}
+
+Behavior:
+
+1. Validate message.
+2. Read history and studentSkills.
+3. Call buildChatContext.
+4. Call askOllama.
+5. Return:
+   {
+   "answer": "..."
+   }
+
+Important:
+
+* Frontend must not call Ollama directly.
+* API route should call Ollama.
+* Do not expose internal errors.
+* Return user-friendly error message if generation fails.
+
+STEP 10 — ROUTE INTEGRATION
+
+Make sure these routes work:
+
+* /
+* /dashboard
+* /companies
+* /companies/[id]
+* /compare
+* /skill-match
+* /chat
+
+Every route should:
+
+* Compile without TypeScript errors.
+* Have responsive layout.
+* Show loading/error/empty states where needed.
+* Use real Supabase data where required.
+
+STEP 11 — NAVIGATION LINKS
+
+Ensure navigation works across pages:
+
+Landing:
+
+* ENTER PLATFORM → /dashboard
+
+Dashboard:
+
+* Companies → /companies
+* Skill Match → /skill-match
+* AI Assistant → /chat
+* Compare → /compare
+
+Companies:
+
+* View Company Profile → /companies/[id]
+* Find by My Skills → /skill-match
+
+Company Profile:
+
+* Back to Companies → /companies
+* Compare link if available
+
+Compare:
+
+* Back to Companies → /companies
+* Change Companies → /companies
+
+Skill Match:
+
+* Back to Companies → /companies
+* View Profile → /companies/[id]
+* Compare → /compare?ids=company_id
+
+Chat:
+
+* Back to Dashboard → /dashboard
+* Update Skills → /skill-match
+
+STEP 12 — ERROR HANDLING
+
+Implement clean handling for:
+
+* Missing Supabase env vars
+* Empty Supabase results
+* Invalid company ID
+* Missing company profile
+* Missing skill data
+* Failed API call
+* Ollama not running
+* Invalid user input
+* Network failure
+
+User-facing messages should be simple:
+
+* “Not available”
+* “No companies found”
+* “Skill information is not available”
+* “I could not generate a response right now. Please check Ollama and Supabase configuration.”
+
+Do not show raw stack traces in the UI.
+
+STEP 13 — RESPONSIVE CHECKS
+
+Check all pages on:
+
+* Mobile
+* Tablet
+* Desktop
+
+Fix:
+
+* Table overflow
+* Long company names
+* Long text fields
+* Missing spacing
+* Broken cards
+* Buttons wrapping incorrectly
+
+STEP 14 — TYPESCRIPT AND BUILD CHECKS
+
+After each section:
+
+1. Run TypeScript check.
+2. Run lint if available.
+3. Run build if available.
+4. Fix all errors before continuing.
+
+Commands:
+
+* npm run lint
+* npm run build
+
+If these scripts do not exist, report that they are missing and continue with TypeScript-safe coding.
+
+STEP 15 — FINAL COMPLETION CHECKLIST
+
+Before finishing, verify:
+
+* Landing page opens.
+* Dashboard route opens.
+* Companies page fetches real company data.
+* Company search works.
+* Category filter works.
+* Company profile page opens by ID.
+* Company skills show correctly.
+* Compare page works with URL IDs.
+* Skill Match accepts student input.
+* Skill Match returns best 5 companies dynamically.
+* Skill profile saves to localStorage.
+* Chat page reads skill profile.
+* Chat API calls Supabase context builder.
+* Chat API calls local Ollama.
+* Chatbot answers using Supabase data only.
+* Chatbot can suggest companies based on saved student skills.
+* Chatbot can give a study plan based on company requirements and student skill gaps.
+* No database schema changes were made.
+* No hardcoded company results are used.
+* No TypeScript errors remain.
+* UI remains consistent with existing design prompts.
+* Mobile layout works.
+
+FINAL RULE
+
+Do not move to the next step until the current step is working.
+
+Keep the implementation simple, readable, and safe.

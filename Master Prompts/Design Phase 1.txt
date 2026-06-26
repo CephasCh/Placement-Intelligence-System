@@ -1,0 +1,943 @@
+Design Phase 1: Landing page & Companies Page
+IMPORTANT CAUTIONS AND RULES
+
+1. Do not change the database schema.
+
+2. Do not create new Supabase migrations.
+
+3. Do not rename, delete, or modify any existing Supabase tables, columns, or views.
+
+4. Use existing Supabase views/tables only.
+
+5. For company listing, use:
+
+   * company_search_view
+
+6. For company profile, use:
+
+   * company_profile_view
+   * company_skills_view
+
+7. For comparison, use:
+
+   * company_compare_view
+   * company_skills_view
+
+8. For skill matching, use:
+
+   * company_skills_view
+   * company_search_view
+
+9. For chatbot context, use read-only Supabase queries only.
+
+10. Do not use INSERT, UPDATE, DELETE, ALTER, DROP, CREATE, or TRUNCATE SQL commands.
+
+11. Do not expose Supabase keys or sensitive environment variables in the UI.
+
+12. Do not use service role key in frontend code.
+
+13. Use only the public anon key on the frontend.
+
+14. Keep all database access read-only unless explicitly instructed.
+
+15. Do not add Redux, Zustand, Prisma, or any heavy state-management library.
+
+16. Do not add unnecessary UI libraries.
+
+17. Use Tailwind CSS and existing components only.
+
+18. Keep the dark theme consistent across all pages.
+
+19. Keep the UI clean, readable, responsive, and not too flashy.
+
+20. Use subtle 3D hover effects only where requested.
+
+21. Do not hardcode company results.
+
+22. Fetch real data from Supabase.
+
+23. If data is missing, show “Not available”.
+
+24. If an error happens, show a clean user-friendly error message.
+
+25. After each page is completed, test the route.
+
+26. After each page is completed, fix TypeScript errors before moving to the next page.
+
+27. After each page is completed, check responsive layout for mobile and desktop.
+
+28. Do not continue to the next page until the current page works correctly.
+
+29. Preserve existing working files unless changes are required.
+
+30. Keep the code simple and easy to understand.
+
+31. Create reusable shared styling/components where possible to avoid repeated code.
+    ```
+    After each page is completed, test the route and fix TypeScript errors before moving to the next page.
+    ```
+
+landing page:
+"use client";
+
+import React, { useEffect, useRef } from "react";
+
+const HalideLanding: React.FC = () => {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const layersRef = useRef<HTMLDivElement[]>([]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const x = (window.innerWidth / 2 - e.pageX) / 25;
+      const y = (window.innerHeight / 2 - e.pageY) / 25;
+
+      canvas.style.transform = `rotateX(${55 + y / 2}deg) rotateZ(${
+        -25 + x / 2
+      }deg)`;
+
+      layersRef.current.forEach((layer, index) => {
+        if (!layer) return;
+
+        const depth = (index + 1) * 15;
+        const moveX = x * (index + 1) * 0.2;
+        const moveY = y * (index + 1) * 0.2;
+
+        layer.style.transform = `translateZ(${depth}px) translate(${moveX}px, ${moveY}px)`;
+      });
+    };
+
+    canvas.style.opacity = "0";
+    canvas.style.transform = "rotateX(90deg) rotateZ(0deg) scale(0.8)";
+
+    const timeout = setTimeout(() => {
+      canvas.style.transition = "all 2.5s cubic-bezier(0.16, 1, 0.3, 1)";
+      canvas.style.opacity = "1";
+      canvas.style.transform = "rotateX(55deg) rotateZ(-25deg) scale(1)";
+    }, 300);
+
+    window.addEventListener("mousemove", handleMouseMove);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  return (
+    <>
+      <style>{`
+        :root {
+          --bg: #0a0a0a;
+          --silver: #e0e0e0;
+          --muted: rgba(224, 224, 224, 0.72);
+          --accent: #ff3c00;
+          --grain-opacity: 0.15;
+        }
+
+        .halide-body {
+          background-color: var(--bg);
+          color: var(--silver);
+          font-family: 'Syncopate', sans-serif;
+          overflow: hidden;
+          height: 100vh;
+          width: 100vw;
+          margin: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .halide-grain {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 100;
+          opacity: var(--grain-opacity);
+        }
+
+        .viewport {
+          perspective: 2000px;
+          width: 100vw;
+          height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+        }
+
+        .canvas-3d {
+          position: relative;
+          width: 800px;
+          height: 500px;
+          transform-style: preserve-3d;
+          transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .layer {
+          position: absolute;
+          inset: 0;
+          border: 1px solid rgba(224, 224, 224, 0.1);
+          background-size: cover;
+          background-position: center;
+          transition: transform 0.5s ease;
+        }
+
+        .layer-1 {
+          background-image: url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=1200');
+          filter: grayscale(1) contrast(1.2) brightness(0.5);
+        }
+
+        .layer-2 {
+          background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&q=80&w=1200');
+          filter: grayscale(1) contrast(1.1) brightness(0.7);
+          opacity: 0.6;
+          mix-blend-mode: screen;
+        }
+
+        .layer-3 {
+          background-image: url('https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&q=80&w=1200');
+          filter: grayscale(1) contrast(1.3) brightness(0.8);
+          opacity: 0.4;
+          mix-blend-mode: overlay;
+        }
+
+        .contours {
+          position: absolute;
+          width: 200%;
+          height: 200%;
+          top: -50%;
+          left: -50%;
+          background-image: repeating-radial-gradient(
+            circle at 50% 50%,
+            transparent 0,
+            transparent 40px,
+            rgba(255,255,255,0.05) 41px,
+            transparent 42px
+          );
+          transform: translateZ(120px);
+          pointer-events: none;
+        }
+
+        .interface-grid {
+          position: fixed;
+          inset: 0;
+          padding: 4rem;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-template-rows: auto 1fr auto;
+          z-index: 10;
+          pointer-events: none;
+        }
+
+        .brand-title {
+          font-weight: 700;
+          letter-spacing: 0.08em;
+        }
+
+        .top-note {
+          text-align: right;
+          font-family: monospace;
+          color: var(--accent);
+          font-size: 0.72rem;
+          line-height: 1.8;
+          letter-spacing: 0.08em;
+        }
+
+        .hero-wrap {
+          grid-column: 1 / -1;
+          align-self: center;
+        }
+
+        .hero-title {
+          font-size: clamp(3rem, 9vw, 9.5rem);
+          line-height: 0.85;
+          letter-spacing: -0.04em;
+          mix-blend-mode: difference;
+          margin: 0;
+        }
+
+        .hero-subtitle {
+          margin-top: 2rem;
+          max-width: 620px;
+          font-family: monospace;
+          font-size: clamp(0.8rem, 1.3vw, 1rem);
+          line-height: 1.8;
+          color: var(--muted);
+          letter-spacing: 0.04em;
+          mix-blend-mode: difference;
+        }
+
+        .bottom-row {
+          grid-column: 1 / -1;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-end;
+          gap: 2rem;
+        }
+
+        .platform-note {
+          font-family: monospace;
+          font-size: 0.75rem;
+          line-height: 1.8;
+          color: var(--muted);
+          letter-spacing: 0.06em;
+        }
+
+        .cta-button {
+          pointer-events: auto;
+          background: var(--silver);
+          color: var(--bg);
+          padding: 1rem 2rem;
+          text-decoration: none;
+          font-weight: 700;
+          clip-path: polygon(0 0, 100% 0, 100% 70%, 85% 100%, 0 100%);
+          transition: 0.3s;
+          white-space: nowrap;
+        }
+
+        .cta-button:hover {
+          background: var(--accent);
+          transform: translateY(-5px);
+        }
+
+        .scroll-hint {
+          position: absolute;
+          bottom: 2rem;
+          left: 50%;
+          width: 1px;
+          height: 60px;
+          background: linear-gradient(to bottom, var(--silver), transparent);
+          animation: flow 2s infinite ease-in-out;
+          z-index: 20;
+        }
+
+        @keyframes flow {
+          0%, 100% {
+            transform: scaleY(0);
+            transform-origin: top;
+          }
+
+          50% {
+            transform: scaleY(1);
+            transform-origin: top;
+          }
+
+          51% {
+            transform: scaleY(1);
+            transform-origin: bottom;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .interface-grid {
+            padding: 2rem;
+            grid-template-columns: 1fr;
+          }
+
+          .top-note {
+            display: none;
+          }
+
+          .hero-title {
+            font-size: clamp(3rem, 16vw, 5.5rem);
+          }
+
+          .bottom-row {
+            flex-direction: column;
+            align-items: flex-start;
+          }
+
+          .canvas-3d {
+            width: 560px;
+            height: 360px;
+          }
+        }
+      `}</style>
+
+      <div className="halide-body">
+        <svg style={{ position: "absolute", width: 0, height: 0 }}>
+          <filter id="grain">
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.65"
+              numOctaves="3"
+            />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+        </svg>
+
+        <div className="halide-grain" style={{ filter: "url(#grain)" }} />
+
+        <div className="interface-grid">
+          <div className="brand-title">TEAM RAGNAROK</div>
+
+          <div className="top-note">
+            <div>STUDENT CAREER INTELLIGENCE</div>
+            <div>KNOW BEFORE YOU APPLY</div>
+          </div>
+
+          <div className="hero-wrap">
+            <h1 className="hero-title">
+              PLACEMENT
+              <br />
+              INTELLIGENCE
+              <br />
+              SYSTEM
+            </h1>
+
+            <p className="hero-subtitle">
+              Know the company before you apply. Explore companies, compare
+              opportunities, match your skills, and get guided placement
+              intelligence from verified company data.
+            </p>
+          </div>
+
+          <div className="bottom-row">
+            <div className="platform-note">
+              <p>[ STUDENT CAREER PLATFORM ]</p>
+              <p>COMPANY RESEARCH • SKILL MATCH • AI GUIDANCE</p>
+            </div>
+
+            <a href="/dashboard" className="cta-button">
+              ENTER PLATFORM
+            </a>
+          </div>
+        </div>
+
+        <div className="viewport">
+          <div className="canvas-3d" ref={canvasRef}>
+            <div
+              className="layer layer-1"
+              ref={(el) => {
+                if (el) layersRef.current[0] = el;
+              }}
+            />
+            <div
+              className="layer layer-2"
+              ref={(el) => {
+                if (el) layersRef.current[1] = el;
+              }}
+            />
+            <div
+              className="layer layer-3"
+              ref={(el) => {
+                if (el) layersRef.current[2] = el;
+              }}
+            />
+            <div className="contours" />
+          </div>
+        </div>
+
+        <div className="scroll-hint" />
+      </div>
+    </>
+  );
+};
+
+export default HalideLanding;
+
+
+Companies Page:
+Confirmed. Use this **single Companies Page section** in the final Codex master prompt.
+
+```text
+COMPANIES PAGE REQUIREMENT
+
+Route:
+- /companies
+
+Purpose:
+Students should be able to browse, search, and filter companies using company cards.
+
+Supabase view to use:
+- company_search_view
+
+Main functionality:
+- Show company cards
+- Search companies by name
+- Filter companies by industry/category buttons
+- Show company name
+- Show company logo or initials fallback
+- Show company category
+- Show short overview
+- Show top skills
+- Show student-fit score
+- Show employee size
+- Show office count / office reach
+- Link to company profile page
+- Keep the page lightweight
+- Use URL search params for filtering
+- Do not use Redux, Zustand, or heavy client-side state
+
+UI Style:
+Use the same visual pattern as this broker card style:
+
+import { InteractiveBrokerCard } from "@/components/ui/interactive-broker-card";
+
+const BrokerCardDemo = () => {
+  return (
+    <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
+      <InteractiveBrokerCard
+        name="Interactive Brokers"
+        logoSrc="https://s3.tradingview.com/brokers/widget/interactivebrokers_298x272_BL__svg.svg"
+        tradableAssets={["Stocks", "Forex", "Bonds", "Options"]}
+        rating={4.4}
+        ratingText="Very Good"
+        reviewsCount="32.6K"
+        accountsCount="267.9K"
+        learnMoreUrl="#"
+      />
+    </div>
+  );
+};
+
+export default BrokerCardDemo;
+
+Adapt the card meaning like this:
+
+- name → company name
+- logoSrc → company logo_url
+- tradableAssets → top_skills
+- rating → student_fit_score converted to 5-star scale
+- ratingText → fit label
+- reviewsCount → employee_size
+- accountsCount → office_count or number of office cities
+- learnMoreUrl → /companies/[company_id]
+
+Fit label rules:
+- 85 to 100 → Excellent Fit
+- 70 to 84 → Good Fit
+- 55 to 69 → Moderate Fit
+- Below 55 → Needs Preparation
+
+Industry/category buttons near the search bar:
+- All
+- Enterprise
+- Startup
+- IT Services
+- AI / Analytics
+- Finance
+- EdTech
+
+Clicking a category button should update URL params:
+- /companies
+- /companies?category=Enterprise
+- /companies?category=Startup
+- /companies?category=IT%20Services
+- /companies?category=AI%20%2F%20Analytics
+- /companies?category=Finance
+- /companies?category=EdTech
+
+Search should also use URL params:
+- /companies?search=accenture
+- /companies?category=Enterprise&search=accenture
+
+Important:
+The category buttons should filter using the category field from company_search_view.
+Keep filtering simple. Use server-side fetching where possible.
+
+Create or update these files:
+
+1. app/companies/page.tsx
+2. components/CompanyIntelligenceCard.tsx
+3. types/company.ts
+4. lib/data.ts
+
+Code for app/companies/page.tsx:
+
+import Link from "next/link";
+import { getCompanies } from "@/lib/data";
+import CompanyIntelligenceCard from "@/components/CompanyIntelligenceCard";
+
+type CompaniesPageProps = {
+  searchParams?: {
+    search?: string;
+    category?: string;
+  };
+};
+
+const categoryButtons = [
+  "All",
+  "Enterprise",
+  "Startup",
+  "IT Services",
+  "AI / Analytics",
+  "Finance",
+  "EdTech",
+];
+
+export default async function CompaniesPage({
+  searchParams,
+}: CompaniesPageProps) {
+  const search = searchParams?.search || "";
+  const category =
+    searchParams?.category && searchParams.category !== "All"
+      ? searchParams.category
+      : "";
+
+  const companies = await getCompanies({
+    search,
+    category,
+    limit: 60,
+  });
+
+  return (
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-8 flex flex-col gap-3">
+          <p className="text-sm font-medium uppercase tracking-[0.25em] text-muted-foreground">
+            Company Intelligence
+          </p>
+
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight md:text-5xl">
+                Explore Companies
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
+                Search companies, understand their skill expectations, compare
+                opportunities, and choose the right company before you apply.
+              </p>
+            </div>
+
+            <Link
+              href="/skill-match"
+              className="w-fit rounded-xl border border-border bg-card px-4 py-2 text-sm font-medium transition hover:bg-muted"
+            >
+              Find by My Skills
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-5 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <form className="flex flex-col gap-3 md:flex-row">
+            <input
+              type="text"
+              name="search"
+              defaultValue={search}
+              placeholder="Search companies like Accenture, Fractal, Google..."
+              className="min-h-11 flex-1 rounded-xl border border-border bg-background px-4 text-sm outline-none transition placeholder:text-muted-foreground focus:border-foreground"
+            />
+
+            {category ? (
+              <input type="hidden" name="category" value={category} />
+            ) : null}
+
+            <button
+              type="submit"
+              className="rounded-xl bg-foreground px-5 py-2 text-sm font-semibold text-background transition hover:opacity-90"
+            >
+              Search
+            </button>
+          </form>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {categoryButtons.map((item) => {
+              const isActive = item === "All" ? !category : category === item;
+
+              const href =
+                item === "All"
+                  ? search
+                    ? `/companies?search=${encodeURIComponent(search)}`
+                    : "/companies"
+                  : `/companies?category=${encodeURIComponent(item)}${
+                      search ? `&search=${encodeURIComponent(search)}` : ""
+                    }`;
+
+              return (
+                <Link
+                  key={item}
+                  href={href}
+                  className={[
+                    "rounded-full border px-4 py-2 text-xs font-semibold transition",
+                    isActive
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ].join(" ")}
+                >
+                  {item}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mb-5 flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
+            Showing{" "}
+            <span className="font-semibold text-foreground">
+              {companies.length}
+            </span>{" "}
+            companies
+            {category ? (
+              <>
+                {" "}
+                in{" "}
+                <span className="font-semibold text-foreground">
+                  {category}
+                </span>
+              </>
+            ) : null}
+          </p>
+        </div>
+
+        {companies.length > 0 ? (
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+            {companies.map((company) => (
+              <CompanyIntelligenceCard
+                key={company.company_id}
+                company={company}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-border bg-card p-10 text-center">
+            <h2 className="text-xl font-semibold">No companies found</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Try changing the search keyword or selecting another industry.
+            </p>
+          </div>
+        )}
+      </div>
+    </main>
+  );
+}
+
+Code for components/CompanyIntelligenceCard.tsx:
+
+import Link from "next/link";
+import { CompanySearchItem } from "@/types/company";
+
+type CompanyIntelligenceCardProps = {
+  company: CompanySearchItem;
+};
+
+function getFitLabel(score?: number | null) {
+  if (!score) return "Not Rated";
+  if (score >= 85) return "Excellent Fit";
+  if (score >= 70) return "Good Fit";
+  if (score >= 55) return "Moderate Fit";
+  return "Needs Preparation";
+}
+
+function getStarRating(score?: number | null) {
+  if (!score) return 0;
+  return Math.round((score / 20) * 10) / 10;
+}
+
+function getInitials(name?: string | null) {
+  if (!name) return "CO";
+
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase();
+}
+
+export default function CompanyIntelligenceCard({
+  company,
+}: CompanyIntelligenceCardProps) {
+  const name = company.short_name || company.name || "Company";
+  const fitScore = company.student_fit_score || 0;
+  const rating = getStarRating(fitScore);
+  const fitLabel = getFitLabel(fitScore);
+  const topSkills = company.top_skills?.slice(0, 4) || [];
+
+  return (
+    <div className="group relative overflow-hidden rounded-3xl border border-border bg-card p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-xl">
+      <div className="flex items-start gap-4">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-background">
+          {company.logo_url ? (
+            <img
+              src={company.logo_url}
+              alt={name}
+              className="h-full w-full object-contain p-2"
+            />
+          ) : (
+            <span className="text-lg font-bold">{getInitials(name)}</span>
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <h2 className="line-clamp-1 text-lg font-bold tracking-tight">
+            {name}
+          </h2>
+
+          <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+            {company.category || "Company"}
+          </p>
+        </div>
+      </div>
+
+      <p className="mt-5 line-clamp-3 min-h-[72px] text-sm leading-6 text-muted-foreground">
+        {company.overview_preview ||
+          "Explore this company profile to understand its business, skills, culture, and career opportunities."}
+      </p>
+
+      <div className="mt-5">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Top Skills
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          {topSkills.length > 0 ? (
+            topSkills.map((skill) => (
+              <span
+                key={skill}
+                className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium"
+              >
+                {skill}
+              </span>
+            ))
+          ) : (
+            <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
+              Skills not listed
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-2xl border border-border bg-background p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-2xl font-bold">{rating.toFixed(1)}</p>
+            <p className="text-xs text-muted-foreground">Student rating</p>
+          </div>
+
+          <div className="text-right">
+            <p className="font-semibold">{fitLabel}</p>
+            <p className="text-xs text-muted-foreground">
+              {fitScore}/100 fit score
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-foreground transition-all"
+            style={{ width: `${Math.min(fitScore, 100)}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-3">
+        <div className="rounded-2xl border border-border bg-background p-3">
+          <p className="line-clamp-1 text-sm font-semibold">
+            {company.employee_size || "Not available"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Employees</p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-background p-3">
+          <p className="line-clamp-1 text-sm font-semibold">
+            {company.office_count ||
+              `${company.office_cities?.length || 0} Cities`}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Office reach</p>
+        </div>
+      </div>
+
+      <Link
+        href={`/companies/${company.company_id}`}
+        className="mt-5 block rounded-2xl bg-foreground px-4 py-3 text-center text-sm font-semibold text-background transition hover:opacity-90"
+      >
+        View Company Profile
+      </Link>
+    </div>
+  );
+}
+
+Required type in types/company.ts:
+
+export type CompanySearchItem = {
+  company_id: number;
+  name: string | null;
+  short_name: string | null;
+  logo_url?: string | null;
+  category: string | null;
+  nature_of_company?: string | null;
+  employee_size?: string | null;
+  office_count?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  overview_preview?: string | null;
+  student_fit_score?: number | null;
+  top_skills?: string[] | null;
+  office_cities?: string[] | null;
+  operating_countries?: string[] | null;
+  profitability_status?: string | null;
+  yoy_growth_rate?: string | null;
+  valuation?: string | null;
+  skill_relevance?: string | null;
+  burnout_risk?: string | null;
+  ai_ml_adoption_level?: string | null;
+};
+
+Required getCompanies function in lib/data.ts:
+
+import { supabase } from "@/lib/supabase";
+import { CompanySearchItem } from "@/types/company";
+
+type GetCompaniesParams = {
+  search?: string;
+  category?: string;
+  minFitScore?: number;
+  limit?: number;
+};
+
+export async function getCompanies(
+  params: GetCompaniesParams = {}
+): Promise<CompanySearchItem[]> {
+  const { search, category, minFitScore, limit = 60 } = params;
+
+  let query = supabase
+    .from("company_search_view")
+    .select("*")
+    .order("student_fit_score", { ascending: false })
+    .limit(limit);
+
+  if (search) {
+    query = query.or(
+      `name.ilike.%${search}%,short_name.ilike.%${search}%,category.ilike.%${search}%`
+    );
+  }
+
+  if (category) {
+    query = query.ilike("category", `%${category}%`);
+  }
+
+  if (minFitScore) {
+    query = query.gte("student_fit_score", minFitScore);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch companies: ${error.message}`);
+  }
+
+  return (data || []) as CompanySearchItem[];
+}
+
+Important notes:
+- Keep this implementation lightweight.
+- Do not create a complex client-side filter system.
+- Do not create Redux/Zustand state.
+- Do not add extra UI libraries.
+- Use server-side fetching from Supabase.
+- If logo_url is missing, use initials fallback.
+- If top_skills is missing, show “Skills not listed”.
+- If no companies are found, show a clean empty state.
+- Industry buttons should use URL params.
+- Company card should visually follow the InteractiveBrokerCard design pattern, but content should be adapted for placement intelligence.
+```

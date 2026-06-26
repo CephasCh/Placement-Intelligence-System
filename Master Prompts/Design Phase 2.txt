@@ -1,0 +1,1158 @@
+Design Phase 2: Company profile & Comparison
+
+IMPORTANT CAUTIONS AND RULES
+
+1. Do not change the database schema.
+
+2. Do not create new Supabase migrations.
+
+3. Do not rename, delete, or modify any existing Supabase tables, columns, or views.
+
+4. Use existing Supabase views/tables only.
+
+5. For company listing, use:
+
+   * company_search_view
+
+6. For company profile, use:
+
+   * company_profile_view
+   * company_skills_view
+
+7. For comparison, use:
+
+   * company_compare_view
+   * company_skills_view
+
+8. For skill matching, use:
+
+   * company_skills_view
+   * company_search_view
+
+9. For chatbot context, use read-only Supabase queries only.
+
+10. Do not use INSERT, UPDATE, DELETE, ALTER, DROP, CREATE, or TRUNCATE SQL commands.
+
+11. Do not expose Supabase keys or sensitive environment variables in the UI.
+
+12. Do not use service role key in frontend code.
+
+13. Use only the public anon key on the frontend.
+
+14. Keep all database access read-only unless explicitly instructed.
+
+15. Do not add Redux, Zustand, Prisma, or any heavy state-management library.
+
+16. Do not add unnecessary UI libraries.
+
+17. Use Tailwind CSS and existing components only.
+
+18. Keep the dark theme consistent across all pages.
+
+19. Keep the UI clean, readable, responsive, and not too flashy.
+
+20. Use subtle 3D hover effects only where requested.
+
+21. Do not hardcode company results.
+
+22. Fetch real data from Supabase.
+
+23. If data is missing, show “Not available”.
+
+24. If an error happens, show a clean user-friendly error message.
+
+25. After each page is completed, test the route.
+
+26. After each page is completed, fix TypeScript errors before moving to the next page.
+
+27. After each page is completed, check responsive layout for mobile and desktop.
+
+28. Do not continue to the next page until the current page works correctly.
+
+29. Preserve existing working files unless changes are required.
+
+30. Keep the code simple and easy to understand.
+
+31. Create reusable shared styling/components where possible to avoid repeated code.
+
+    ```
+    After each page is completed, test the route and fix TypeScript errors before moving to the next page.
+    ```
+
+
+Company Profile page: 
+prompt:
+COMPANY PROFILE PAGE REQUIREMENT
+
+Route:
+- /companies/[id]
+
+Purpose:
+Show full company intelligence in a clean card-based layout.
+
+Supabase views to use:
+- company_profile_view
+- company_skills_view
+
+UI Style:
+Use the provided Card component style:
+
+- Card
+- CardHeader
+- CardTitle
+- CardDescription
+- CardContent
+- CardFooter
+
+The page should be built using multiple cards.
+Each major field/section should have its own card.
+Keep the layout clean, modern, readable, and lightweight.
+
+Do not use a heavy chart library.
+For skill levels, create a simple horizontal bar chart using Tailwind CSS.
+
+Page sections:
+
+1. Header Card
+Show:
+- company name
+- short name
+- category
+- employee size
+- website link
+- student-fit score
+
+2. Overview Card
+Show:
+- overview_text
+- vision_statement
+- mission_statement
+
+3. Student-Fit Card
+Show:
+- student_fit_score
+- positive_signals
+- caution_signals
+
+4. Skills Level Chart Card
+Show required skills from company_skills_view.
+Each skill should display:
+- skill name
+- required_level
+- proficiency_name
+- horizontal bar from 1 to 7
+
+5. Financial Summary Card
+Show:
+- annual_revenue
+- annual_profit
+- valuation
+- yoy_growth_rate
+- profitability_status
+
+6. Work Culture Card
+Show:
+- work_culture_summary
+- manager_quality
+- psychological_safety
+- burnout_risk
+- learning_culture
+- mentorship_availability
+
+7. Technology Card
+Show:
+- ai_ml_adoption_level
+- tech_stack
+- skill_relevance
+- exposure_quality
+
+8. Locations Card
+Show:
+- office_cities
+- operating_countries
+
+Important:
+- If any value is missing, show “Not available”.
+- Keep the page responsive.
+- Use a two-column grid on desktop.
+- Use one column on mobile.
+- Keep design consistent with the Card component.
+
+code:
+// app/companies/[id]/page.tsx
+
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { getCompanyById, getCompanySkills } from "@/lib/data";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+type CompanyProfilePageProps = {
+  params: {
+    id: string;
+  };
+};
+
+function valueOrFallback(value?: string | number | null) {
+  return value ? value : "Not available";
+}
+
+function formatArray(values?: string[] | null) {
+  if (!values || values.length === 0) return "Not available";
+  return values.join(", ");
+}
+
+function ScoreCard({ score }: { score?: number | null }) {
+  const finalScore = score || 0;
+
+  let label = "Needs Preparation";
+
+  if (finalScore >= 85) label = "Excellent Fit";
+  else if (finalScore >= 70) label = "Good Fit";
+  else if (finalScore >= 55) label = "Moderate Fit";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Student-Fit Score</CardTitle>
+        <CardDescription>
+          How suitable this company looks for students.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        <div className="flex items-end gap-3">
+          <span className="text-5xl font-bold">{finalScore}</span>
+          <span className="pb-2 text-sm text-muted-foreground">/ 100</span>
+        </div>
+
+        <p className="mt-3 text-lg font-semibold">{label}</p>
+
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-foreground"
+            style={{ width: `${Math.min(finalScore, 100)}%` }}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignalList({
+  title,
+  description,
+  items,
+}: {
+  title: string;
+  description: string;
+  items?: string[] | null;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        {items && items.length > 0 ? (
+          <ul className="space-y-2">
+            {items.map((item) => (
+              <li
+                key={item}
+                className="rounded-lg border bg-background px-3 py-2 text-sm"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">Not available</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | number | null;
+}) {
+  return (
+    <div className="rounded-lg border bg-background p-3">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-sm font-medium">{valueOrFallback(value)}</p>
+    </div>
+  );
+}
+
+function SkillsLevelChart({
+  skills,
+}: {
+  skills: {
+    skill_set_id: number;
+    skill_set_name: string;
+    required_level: number;
+    proficiency_name: string;
+  }[];
+}) {
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader>
+        <CardTitle>Required Skills Level</CardTitle>
+        <CardDescription>
+          Skill expectations for this company on a 1 to 7 level scale.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        {skills.length > 0 ? (
+          <div className="space-y-4">
+            {skills.map((skill) => {
+              const width = Math.min((skill.required_level / 7) * 100, 100);
+
+              return (
+                <div key={skill.skill_set_id} className="space-y-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium">
+                        {skill.skill_set_name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {skill.proficiency_name}
+                      </p>
+                    </div>
+
+                    <p className="text-sm font-semibold">
+                      Level {skill.required_level}/7
+                    </p>
+                  </div>
+
+                  <div className="h-3 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-foreground"
+                      style={{ width: `${width}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Skill information is not available.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default async function CompanyProfilePage({
+  params,
+}: CompanyProfilePageProps) {
+  const companyId = Number(params.id);
+
+  if (!companyId) {
+    notFound();
+  }
+
+  const company = await getCompanyById(companyId);
+  const skills = await getCompanySkills(companyId);
+
+  if (!company) {
+    notFound();
+  }
+
+  return (
+    <main className="min-h-screen bg-background px-4 py-8 text-foreground md:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6">
+          <Link
+            href="/companies"
+            className="text-sm font-medium text-muted-foreground transition hover:text-foreground"
+          >
+            ← Back to Companies
+          </Link>
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle className="text-3xl md:text-5xl">
+                {company.short_name || company.name}
+              </CardTitle>
+              <CardDescription className="text-base">
+                {company.category || "Company"} •{" "}
+                {company.employee_size || "Employee size not available"}
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <p className="max-w-4xl text-sm leading-7 text-muted-foreground md:text-base">
+                {company.overview_text || "Overview is not available."}
+              </p>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                {company.website_url ? (
+                  <Link
+                    href={company.website_url}
+                    target="_blank"
+                    className="rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background"
+                  >
+                    Visit Website
+                  </Link>
+                ) : null}
+
+                {company.linkedin_url ? (
+                  <Link
+                    href={company.linkedin_url}
+                    target="_blank"
+                    className="rounded-lg border px-4 py-2 text-sm font-semibold"
+                  >
+                    LinkedIn
+                  </Link>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+
+          <ScoreCard score={company.student_fit_score} />
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Company Direction</CardTitle>
+              <CardDescription>
+                Vision, mission, and company purpose.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              <InfoRow label="Vision" value={company.vision_statement} />
+              <InfoRow label="Mission" value={company.mission_statement} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Company Basics</CardTitle>
+              <CardDescription>Quick company facts.</CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              <InfoRow label="Nature" value={company.nature_of_company} />
+              <InfoRow label="Office count" value={company.office_count} />
+              <InfoRow label="Category" value={company.category} />
+            </CardContent>
+          </Card>
+
+          <SignalList
+            title="Positive Signals"
+            description="Why this company may be a good student fit."
+            items={company.positive_signals}
+          />
+
+          <SignalList
+            title="Caution Signals"
+            description="Areas students should prepare for."
+            items={company.caution_signals}
+          />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Financial Summary</CardTitle>
+              <CardDescription>
+                Revenue, valuation, growth, and profitability.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              <InfoRow label="Annual revenue" value={company.annual_revenue} />
+              <InfoRow label="Annual profit" value={company.annual_profit} />
+              <InfoRow label="Valuation" value={company.valuation} />
+              <InfoRow label="Growth rate" value={company.yoy_growth_rate} />
+              <InfoRow
+                label="Profitability"
+                value={company.profitability_status}
+              />
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Work Culture</CardTitle>
+              <CardDescription>
+                Culture, learning, mentorship, and workplace signals.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <InfoRow
+                label="Culture summary"
+                value={company.work_culture_summary}
+              />
+              <InfoRow label="Manager quality" value={company.manager_quality} />
+              <InfoRow
+                label="Psychological safety"
+                value={company.psychological_safety}
+              />
+              <InfoRow label="Burnout risk" value={company.burnout_risk} />
+              <InfoRow
+                label="Learning culture"
+                value={company.learning_culture}
+              />
+              <InfoRow
+                label="Mentorship"
+                value={company.mentorship_availability}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Technology</CardTitle>
+              <CardDescription>
+                Technical exposure and adoption level.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              <InfoRow
+                label="AI/ML adoption"
+                value={company.ai_ml_adoption_level}
+              />
+              <InfoRow label="Tech stack" value={company.tech_stack} />
+              <InfoRow label="Skill relevance" value={company.skill_relevance} />
+              <InfoRow
+                label="Exposure quality"
+                value={company.exposure_quality}
+              />
+            </CardContent>
+          </Card>
+
+          <SkillsLevelChart skills={skills} />
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Locations</CardTitle>
+              <CardDescription>
+                Office cities and operating countries.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <InfoRow
+                label="Office cities"
+                value={formatArray(company.office_cities)}
+              />
+              <InfoRow
+                label="Operating countries"
+                value={formatArray(company.operating_countries)}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+Comparison page:
+```text id="xh33cv"
+COMPARISON PAGE REQUIREMENT
+
+Route:
+- /compare
+- Example: /compare?ids=1,2,3
+
+Purpose:
+Students should be able to compare selected companies side-by-side.
+
+Supabase views to use:
+- company_compare_view
+- company_skills_view
+
+Design style:
+- Use the same dark theme style as the Company Profile Page and Landing Page.
+- Use clean Card-based sections.
+- Comparison tables should lightly pop out with a subtle 3D effect.
+- Keep it simple, premium, readable, and not flashy.
+- Use soft shadows, rounded cards, dark background, and clear table rows.
+- Tables must be easy to scan and compare.
+- Use horizontal scrolling on small screens.
+- Do not use heavy chart libraries.
+- Use Tailwind CSS only.
+
+Main sections:
+1. Page Header
+2. Student-Fit Score Comparison
+3. Company Profile Comparison Table
+4. Financial Strength Comparison Table
+5. Work Culture Comparison Table
+6. Technology Exposure Comparison Table
+7. Required Skills Comparison Table
+
+Create or update these files:
+1. app/compare/page.tsx
+2. lib/data.ts
+
+Code for app/compare/page.tsx:
+
+import Link from "next/link";
+import {
+  getCompaniesForCompare,
+  getCompanySkillsForCompare,
+} from "@/lib/data";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+
+type ComparePageProps = {
+  searchParams?: {
+    ids?: string;
+  };
+};
+
+function parseCompanyIds(ids?: string) {
+  if (!ids) return [];
+
+  return ids
+    .split(",")
+    .map((id) => Number(id.trim()))
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function valueOrFallback(value?: string | number | string[] | null) {
+  if (!value) return "Not available";
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(", ") : "Not available";
+  }
+
+  return value;
+}
+
+function getFitLabel(score?: number | null) {
+  if (!score) return "Not Rated";
+  if (score >= 85) return "Excellent Fit";
+  if (score >= 70) return "Good Fit";
+  if (score >= 55) return "Moderate Fit";
+  return "Needs Preparation";
+}
+
+function CompareTable({
+  title,
+  description,
+  rows,
+  companies,
+}: {
+  title: string;
+  description: string;
+  rows: {
+    label: string;
+    key: string;
+  }[];
+  companies: any[];
+}) {
+  return (
+    <Card className="overflow-hidden border-white/10 bg-zinc-950/80 text-zinc-100 shadow-[0_24px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_32px_90px_rgba(0,0,0,0.55)]">
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription className="text-zinc-400">
+          {description}
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
+          <table className="w-full min-w-[760px] border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-white/10 bg-white/[0.04]">
+                <th className="w-48 px-4 py-4 text-left font-semibold text-zinc-300">
+                  Field
+                </th>
+
+                {companies.map((company) => (
+                  <th
+                    key={company.company_id}
+                    className="px-4 py-4 text-left font-semibold text-white"
+                  >
+                    {company.short_name || company.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {rows.map((row) => (
+                <tr
+                  key={row.key}
+                  className="border-b border-white/10 last:border-b-0"
+                >
+                  <td className="px-4 py-4 font-medium text-zinc-400">
+                    {row.label}
+                  </td>
+
+                  {companies.map((company) => (
+                    <td
+                      key={`${company.company_id}-${row.key}`}
+                      className="px-4 py-4 leading-6 text-zinc-100"
+                    >
+                      {valueOrFallback(company[row.key])}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function FitScoreComparison({ companies }: { companies: any[] }) {
+  return (
+    <Card className="border-white/10 bg-zinc-950/80 text-zinc-100 shadow-[0_24px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1">
+      <CardHeader>
+        <CardTitle>Student-Fit Comparison</CardTitle>
+        <CardDescription className="text-zinc-400">
+          Compare how suitable each company is for students.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {companies.map((company) => {
+            const score = company.student_fit_score || 0;
+
+            return (
+              <div
+                key={company.company_id}
+                className="rounded-2xl border border-white/10 bg-black/30 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] transition hover:-translate-y-0.5"
+              >
+                <p className="line-clamp-1 text-sm font-semibold text-white">
+                  {company.short_name || company.name}
+                </p>
+
+                <div className="mt-4 flex items-end gap-2">
+                  <span className="text-4xl font-bold">{score}</span>
+                  <span className="pb-1 text-sm text-zinc-400">/100</span>
+                </div>
+
+                <p className="mt-2 text-sm font-medium text-zinc-300">
+                  {getFitLabel(score)}
+                </p>
+
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-zinc-100"
+                    style={{ width: `${Math.min(score, 100)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SkillsComparison({
+  companies,
+  skills,
+}: {
+  companies: any[];
+  skills: any[];
+}) {
+  const skillNames = Array.from(
+    new Set(skills.map((skill) => skill.skill_set_name).filter(Boolean))
+  );
+
+  function findSkill(companyId: number, skillName: string) {
+    return skills.find(
+      (skill) =>
+        skill.company_id === companyId && skill.skill_set_name === skillName
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden border-white/10 bg-zinc-950/80 text-zinc-100 shadow-[0_24px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_32px_90px_rgba(0,0,0,0.55)]">
+      <CardHeader>
+        <CardTitle>Required Skills Comparison</CardTitle>
+        <CardDescription className="text-zinc-400">
+          Skill requirement levels compared on a 1 to 7 scale.
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        {skillNames.length > 0 ? (
+          <div className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30">
+            <table className="w-full min-w-[860px] border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-white/10 bg-white/[0.04]">
+                  <th className="w-56 px-4 py-4 text-left font-semibold text-zinc-300">
+                    Skill
+                  </th>
+
+                  {companies.map((company) => (
+                    <th
+                      key={company.company_id}
+                      className="px-4 py-4 text-left font-semibold text-white"
+                    >
+                      {company.short_name || company.name}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+
+              <tbody>
+                {skillNames.map((skillName) => (
+                  <tr
+                    key={skillName}
+                    className="border-b border-white/10 last:border-b-0"
+                  >
+                    <td className="px-4 py-4 font-medium text-zinc-300">
+                      {skillName}
+                    </td>
+
+                    {companies.map((company) => {
+                      const skill = findSkill(company.company_id, skillName);
+                      const level = skill?.required_level || 0;
+                      const width = Math.min((level / 7) * 100, 100);
+
+                      return (
+                        <td
+                          key={`${company.company_id}-${skillName}`}
+                          className="px-4 py-4"
+                        >
+                          {skill ? (
+                            <div>
+                              <div className="mb-2 flex items-center justify-between gap-3">
+                                <span className="text-xs text-zinc-400">
+                                  {skill.proficiency_name || "Required"}
+                                </span>
+
+                                <span className="text-xs font-semibold text-zinc-100">
+                                  {level}/7
+                                </span>
+                              </div>
+
+                              <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+                                <div
+                                  className="h-full rounded-full bg-zinc-100"
+                                  style={{ width: `${width}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-zinc-500">
+                              Not listed
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-400">
+            Skill comparison data is not available.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export default async function ComparePage({ searchParams }: ComparePageProps) {
+  const ids = parseCompanyIds(searchParams?.ids);
+
+  if (ids.length === 0) {
+    return (
+      <main className="min-h-screen bg-black px-4 py-10 text-white md:px-8">
+        <div className="mx-auto max-w-5xl">
+          <Link
+            href="/companies"
+            className="text-sm font-medium text-zinc-400 transition hover:text-white"
+          >
+            ← Back to Companies
+          </Link>
+
+          <Card className="mt-8 border-white/10 bg-zinc-950 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+            <CardHeader>
+              <CardTitle>Compare Companies</CardTitle>
+              <CardDescription className="text-zinc-400">
+                Select companies from the Companies page to compare them
+                side-by-side.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <p className="text-sm leading-6 text-zinc-300">
+                Example URL format:
+              </p>
+
+              <div className="mt-3 rounded-xl border border-white/10 bg-black/40 px-4 py-3 font-mono text-sm text-zinc-300">
+                /compare?ids=1,2,3
+              </div>
+
+              <Link
+                href="/companies"
+                className="mt-6 inline-flex rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+              >
+                Browse Companies
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    );
+  }
+
+  const companies = await getCompaniesForCompare(ids);
+  const skills = await getCompanySkillsForCompare(ids);
+
+  const profileRows = [
+    { label: "Category", key: "category" },
+    { label: "Nature", key: "nature_of_company" },
+    { label: "Employee size", key: "employee_size" },
+    { label: "Office count", key: "office_count" },
+    { label: "Operating countries", key: "operating_countries" },
+  ];
+
+  const financialRows = [
+    { label: "Annual revenue", key: "annual_revenue" },
+    { label: "Annual profit", key: "annual_profit" },
+    { label: "Valuation", key: "valuation" },
+    { label: "Growth rate", key: "yoy_growth_rate" },
+    { label: "Profitability", key: "profitability_status" },
+  ];
+
+  const cultureRows = [
+    { label: "Work culture", key: "work_culture_summary" },
+    { label: "Manager quality", key: "manager_quality" },
+    { label: "Psychological safety", key: "psychological_safety" },
+    { label: "Learning culture", key: "learning_culture" },
+    { label: "Mentorship", key: "mentorship_availability" },
+    { label: "Burnout risk", key: "burnout_risk" },
+  ];
+
+  const technologyRows = [
+    { label: "Tech stack", key: "tech_stack" },
+    { label: "AI / ML adoption", key: "ai_ml_adoption_level" },
+    { label: "Skill relevance", key: "skill_relevance" },
+    { label: "Exposure quality", key: "exposure_quality" },
+  ];
+
+  return (
+    <main className="min-h-screen bg-black px-4 py-10 text-white md:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6">
+          <Link
+            href="/companies"
+            className="text-sm font-medium text-zinc-400 transition hover:text-white"
+          >
+            ← Back to Companies
+          </Link>
+        </div>
+
+        <section className="mb-8">
+          <p className="text-sm font-medium uppercase tracking-[0.25em] text-zinc-500">
+            Company Comparison
+          </p>
+
+          <div className="mt-3 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-white md:text-5xl">
+                Compare Companies
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400 md:text-base">
+                Compare company profile elements, student-fit signals, work
+                culture, technology exposure, financial strength, and required
+                skills side-by-side.
+              </p>
+            </div>
+
+            <Link
+              href="/companies"
+              className="w-fit rounded-xl border border-white/10 bg-zinc-950 px-4 py-2 text-sm font-medium text-zinc-200 shadow-[0_12px_30px_rgba(0,0,0,0.35)] transition hover:-translate-y-0.5 hover:bg-zinc-900"
+            >
+              Change Companies
+            </Link>
+          </div>
+        </section>
+
+        {companies.length > 0 ? (
+          <div className="space-y-6">
+            <FitScoreComparison companies={companies} />
+
+            <CompareTable
+              title="Company Profile"
+              description="Basic company identity and operating information."
+              rows={profileRows}
+              companies={companies}
+            />
+
+            <CompareTable
+              title="Financial Strength"
+              description="Revenue, profit, valuation, growth, and profitability."
+              rows={financialRows}
+              companies={companies}
+            />
+
+            <CompareTable
+              title="Work Culture"
+              description="Compare workplace environment and student learning signals."
+              rows={cultureRows}
+              companies={companies}
+            />
+
+            <CompareTable
+              title="Technology Exposure"
+              description="Compare technology stack, skill relevance, and AI adoption."
+              rows={technologyRows}
+              companies={companies}
+            />
+
+            <SkillsComparison companies={companies} skills={skills} />
+          </div>
+        ) : (
+          <Card className="border-white/10 bg-zinc-950 text-white shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+            <CardHeader>
+              <CardTitle>No companies found</CardTitle>
+              <CardDescription className="text-zinc-400">
+                The selected company IDs did not match any records.
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <Link
+                href="/companies"
+                className="inline-flex rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black"
+              >
+                Browse Companies
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </main>
+  );
+}
+
+Add this to lib/data.ts:
+
+export async function getCompaniesForCompare(companyIds: number[]) {
+  if (companyIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("company_compare_view")
+    .select("*")
+    .in("company_id", companyIds);
+
+  if (error) {
+    throw new Error(
+      `Failed to fetch companies for comparison: ${error.message}`
+    );
+  }
+
+  const sortedData = companyIds
+    .map((id) => data?.find((company) => company.company_id === id))
+    .filter(Boolean);
+
+  return sortedData;
+}
+
+export async function getCompanySkillsForCompare(companyIds: number[]) {
+  if (companyIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("company_skills_view")
+    .select("*")
+    .in("company_id", companyIds)
+    .order("skill_set_name", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to fetch company skills: ${error.message}`);
+  }
+
+  return data || [];
+}
+
+Preview:
+
+------------------------------------------------------------
+
+← Back to Companies
+
+COMPANY COMPARISON
+
+Compare Companies
+
+Compare company profile elements, student-fit signals, work
+culture, technology exposure, financial strength, and required
+skills side-by-side.
+
+                                      [ Change Companies ]
+
+------------------------------------------------------------
+
+[ Student-Fit Comparison ]
+
+Accenture                  Fractal                    Google
+82 /100                    76 /100                    70 /100
+Good Fit                   Good Fit                   Good Fit
+█████████                  ████████                   ███████
+
+------------------------------------------------------------
+
+[ Company Profile ]
+
+Field              Accenture          Fractal          Google
+Category           IT Services        AI Analytics     Technology
+Nature             Enterprise         Product          Product
+Employee size      700K+              4K+              180K+
+Office count       200+               15+              100+
+
+------------------------------------------------------------
+
+[ Financial Strength ]
+
+Field              Accenture          Fractal          Google
+Annual revenue     Not available      Not available    Not available
+Annual profit      Not available      Not available    Not available
+Valuation          Not available      Not available    Not available
+Growth rate        Not available      Not available    Not available
+
+------------------------------------------------------------
+
+[ Required Skills Comparison ]
+
+Skill              Accenture          Fractal          Google
+SQL                Level 5/7          Level 6/7        Level 5/7
+Coding             Level 5/7          Level 6/7        Level 7/7
+Communication      Level 6/7          Level 5/7        Level 5/7
+
+------------------------------------------------------------
