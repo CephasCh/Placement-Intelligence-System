@@ -1,0 +1,998 @@
+create or replace view public.company_locations_view as
+SELECT
+  c.company_id,
+  c.name AS company_name,
+  c.short_name AS company_short_name,
+  COALESCE(
+    array_agg(DISTINCT ct.city ORDER BY ct.city)
+    FILTER (WHERE ct.city IS NOT NULL),
+    ARRAY[]::text[]
+  ) AS office_cities,
+  COALESCE(
+    array_agg(DISTINCT co.country ORDER BY co.country)
+    FILTER (WHERE co.country IS NOT NULL),
+    ARRAY[]::text[]
+  ) AS operating_countries
+FROM companies c
+LEFT JOIN company_office_locations_map olm
+  ON olm.company_id = c.company_id
+LEFT JOIN cities ct
+  ON ct.city_id = olm.city_id
+LEFT JOIN company_operating_countries_map ocm
+  ON ocm.company_id = c.company_id
+LEFT JOIN countries co
+  ON co.countries_id = ocm.countries_id
+GROUP BY c.company_id, c.name, c.short_name;
+
+
+create or replace view public.company_skills_view as
+SELECT
+  c.company_id,
+  c.name AS company_name,
+  c.short_name AS company_short_name,
+  sm.skill_set_id,
+  sm.skill_set_name,
+  sm.short_name AS skill_short_name,
+  sm.skill_set_description,
+  csl.required_level,
+  pl.proficiency_level_id,
+  pl.proficiency_name,
+  pl.proficiency_code,
+  pl.proficiency_description
+FROM company_skill_levels csl
+JOIN companies c
+  ON c.company_id = csl.company_id
+JOIN skill_set_master sm
+  ON sm.skill_set_id = csl.skill_set_id
+JOIN proficiency_levels pl
+  ON pl.proficiency_level_id = csl.required_proficiency_level_id;
+
+
+create or replace view public.company_student_fit_view as
+WITH skill_summary AS (
+  SELECT
+    company_skill_levels.company_id,
+    round(avg(company_skill_levels.required_level), 2) AS avg_required_level,
+    max(company_skill_levels.required_level) AS max_required_level,
+    count(*) AS total_required_skills
+  FROM company_skill_levels
+  GROUP BY company_skill_levels.company_id
+),
+learning AS (
+  SELECT
+    company_learning_culture.company_talent_growth_id,
+    string_agg(
+      DISTINCT NULLIF(TRIM(BOTH FROM company_learning_culture.learning_culture), ''),
+      ' | '
+    ) AS learning_culture
+  FROM company_learning_culture
+  GROUP BY company_learning_culture.company_talent_growth_id
+),
+mentorship AS (
+  SELECT
+    company_mentorship_availability.company_talent_growth_id,
+    string_agg(
+      DISTINCT NULLIF(TRIM(BOTH FROM company_mentorship_availability.mentorship_availability), ''),
+      ' | '
+    ) AS mentorship_availability
+  FROM company_mentorship_availability
+  GROUP BY company_mentorship_availability.company_talent_growth_id
+),
+exit_ops AS (
+  SELECT
+    company_exit_opportunities.company_talent_growth_id,
+    string_agg(
+      DISTINCT NULLIF(TRIM(BOTH FROM company_exit_opportunities.exit_opportunities), ''),
+      ' | '
+    ) AS exit_opportunities
+  FROM company_exit_opportunities
+  GROUP BY company_exit_opportunities.company_talent_growth_id
+),
+global_exp AS (
+  SELECT
+    company_global_exposure.company_talent_growth_id,
+    string_agg(
+      DISTINCT NULLIF(TRIM(BOTH FROM company_global_exposure.global_exposure), ''),
+      ' | '
+    ) AS global_exposure
+  FROM company_global_exposure
+  GROUP BY company_global_exposure.company_talent_growth_id
+),
+fit_inputs AS (
+  SELECT
+    c.company_id,
+    c.name,
+    c.short_name,
+    c.category,
+    ss.avg_required_level,
+    ss.max_required_level,
+    ss.total_required_skills,
+    tg.onboarding_quality,
+    tg.internal_mobility,
+    tg.role_clarity,
+    tg.early_ownership,
+    tg.skill_relevance,
+    tg.exposure_quality,
+    tg.brand_value,
+    tg.external_recognition,
+    cu.manager_quality,
+    cu.psychological_safety,
+    cu.burnout_risk,
+    cu.avg_retention_tenure,
+    f.annual_revenue,
+    f.valuation,
+    f.yoy_growth_rate,
+    f.profitability_status,
+    l.learning_culture,
+    m.mentorship_availability,
+    eo.exit_opportunities,
+    ge.global_exposure,
+    br.glassdoor_rating,
+    br.google_rating,
+    br.indeed_rating
+  FROM companies c
+  LEFT JOIN skill_summary ss
+    ON ss.company_id = c.company_id
+  LEFT JOIN company_talent_growth tg
+    ON tg.company_id = c.company_id
+  LEFT JOIN company_culture cu
+    ON cu.company_id = c.company_id
+  LEFT JOIN company_financials f
+    ON f.company_id = c.company_id
+  LEFT JOIN company_brand_reputation br
+    ON br.company_id = c.company_id
+  LEFT JOIN learning l
+    ON l.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN mentorship m
+    ON m.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN exit_ops eo
+    ON eo.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN global_exp ge
+    ON ge.company_talent_growth_id = tg.company_talent_growth_id
+),
+score_parts AS (
+  SELECT
+    fi.*,
+
+    CASE
+      WHEN fi.avg_required_level IS NULL THEN 60
+      WHEN fi.avg_required_level <= 3 THEN 90
+      WHEN fi.avg_required_level <= 4 THEN 80
+      WHEN fi.avg_required_level <= 5 THEN 68
+      WHEN fi.avg_required_level <= 6 THEN 55
+      ELSE 42
+    END AS skill_accessibility_score,
+
+    CASE
+      WHEN lower(
+        COALESCE(fi.onboarding_quality, '') || ' ' ||
+        COALESCE(fi.role_clarity, '') || ' ' ||
+        COALESCE(fi.early_ownership, '')
+      ) ~ 'excellent|industry-leading|strong|high' THEN 85
+      WHEN lower(
+        COALESCE(fi.onboarding_quality, '') || ' ' ||
+        COALESCE(fi.role_clarity, '') || ' ' ||
+        COALESCE(fi.early_ownership, '')
+      ) ~ 'moderate|medium' THEN 65
+      WHEN lower(
+        COALESCE(fi.onboarding_quality, '') || ' ' ||
+        COALESCE(fi.role_clarity, '') || ' ' ||
+        COALESCE(fi.early_ownership, '')
+      ) ~ 'low|poor' THEN 40
+      ELSE 60
+    END AS fresher_friendliness_score,
+
+    CASE
+      WHEN lower(
+        COALESCE(fi.learning_culture, '') || ' ' ||
+        COALESCE(fi.mentorship_availability, '') || ' ' ||
+        COALESCE(fi.exposure_quality, '')
+      ) ~ 'excellent|strong|high|very high' THEN 85
+      WHEN lower(
+        COALESCE(fi.learning_culture, '') || ' ' ||
+        COALESCE(fi.mentorship_availability, '') || ' ' ||
+        COALESCE(fi.exposure_quality, '')
+      ) ~ 'moderate|medium' THEN 65
+      WHEN lower(
+        COALESCE(fi.learning_culture, '') || ' ' ||
+        COALESCE(fi.mentorship_availability, '') || ' ' ||
+        COALESCE(fi.exposure_quality, '')
+      ) ~ 'low|limited' THEN 40
+      ELSE 60
+    END AS learning_mentorship_score,
+
+    CASE
+      WHEN lower(
+        COALESCE(fi.internal_mobility, '') || ' ' ||
+        COALESCE(fi.exit_opportunities, '') || ' ' ||
+        COALESCE(fi.global_exposure, '') || ' ' ||
+        COALESCE(fi.brand_value, '')
+      ) ~ 'excellent|strong|high|very high' THEN 85
+      WHEN lower(
+        COALESCE(fi.internal_mobility, '') || ' ' ||
+        COALESCE(fi.exit_opportunities, '') || ' ' ||
+        COALESCE(fi.global_exposure, '') || ' ' ||
+        COALESCE(fi.brand_value, '')
+      ) ~ 'moderate|medium' THEN 65
+      WHEN lower(
+        COALESCE(fi.internal_mobility, '') || ' ' ||
+        COALESCE(fi.exit_opportunities, '') || ' ' ||
+        COALESCE(fi.global_exposure, '') || ' ' ||
+        COALESCE(fi.brand_value, '')
+      ) ~ 'low|limited' THEN 40
+      ELSE 60
+    END AS career_growth_score,
+
+    CASE
+      WHEN lower(COALESCE(fi.burnout_risk, '')) LIKE '%high%'
+        AND lower(COALESCE(fi.burnout_risk, '')) LIKE '%moderate%' THEN 55
+      WHEN lower(COALESCE(fi.burnout_risk, '')) LIKE '%high%' THEN 35
+      WHEN lower(COALESCE(fi.burnout_risk, '')) LIKE '%low%' THEN 90
+      WHEN lower(COALESCE(fi.burnout_risk, '')) LIKE '%medium%'
+        OR lower(COALESCE(fi.burnout_risk, '')) LIKE '%moderate%' THEN 65
+      ELSE 60
+    END AS work_life_balance_score,
+
+    CASE
+      WHEN lower(
+        COALESCE(fi.brand_value, '') || ' ' ||
+        COALESCE(fi.external_recognition, '')
+      ) ~ 'excellent|strong|high|very high' THEN 85
+      WHEN lower(
+        COALESCE(fi.brand_value, '') || ' ' ||
+        COALESCE(fi.external_recognition, '')
+      ) ~ 'moderate|medium' THEN 65
+      WHEN lower(
+        COALESCE(fi.brand_value, '') || ' ' ||
+        COALESCE(fi.external_recognition, '')
+      ) ~ 'low|limited' THEN 40
+      ELSE 60
+    END AS brand_value_score,
+
+    CASE
+      WHEN lower(COALESCE(fi.profitability_status, '')) LIKE '%profitable%'
+        AND lower(COALESCE(fi.yoy_growth_rate, '')) !~ 'negative|decline|loss' THEN 85
+      WHEN lower(COALESCE(fi.profitability_status, '')) LIKE '%profitable%' THEN 75
+      WHEN lower(COALESCE(fi.profitability_status, '')) LIKE '%loss%'
+        OR lower(COALESCE(fi.profitability_status, '')) LIKE '%unprofitable%' THEN 45
+      ELSE 60
+    END AS company_stability_score
+  FROM fit_inputs fi
+)
+SELECT
+  company_id,
+  name,
+  short_name,
+  category,
+  avg_required_level,
+  max_required_level,
+  total_required_skills,
+  skill_accessibility_score,
+  fresher_friendliness_score,
+  learning_mentorship_score,
+  career_growth_score,
+  work_life_balance_score,
+  brand_value_score,
+  company_stability_score,
+  round(
+    (
+      skill_accessibility_score::numeric * 0.25 +
+      fresher_friendliness_score::numeric * 0.20 +
+      learning_mentorship_score::numeric * 0.15 +
+      career_growth_score::numeric * 0.15 +
+      work_life_balance_score::numeric * 0.10 +
+      brand_value_score::numeric * 0.10 +
+      company_stability_score::numeric * 0.05
+    )
+  )::integer AS student_fit_score,
+  array_remove(
+    ARRAY[
+      CASE WHEN skill_accessibility_score >= 75 THEN 'Skill requirements are student-accessible' END,
+      CASE WHEN fresher_friendliness_score >= 75 THEN 'Good fresher-friendly signals' END,
+      CASE WHEN learning_mentorship_score >= 75 THEN 'Strong learning and mentorship potential' END,
+      CASE WHEN career_growth_score >= 75 THEN 'Good career growth potential' END,
+      CASE WHEN work_life_balance_score >= 75 THEN 'Healthy work-life balance signals' END,
+      CASE WHEN brand_value_score >= 75 THEN 'Strong brand value' END,
+      CASE WHEN company_stability_score >= 75 THEN 'Stable company profile' END
+    ],
+    NULL
+  ) AS positive_signals,
+  array_remove(
+    ARRAY[
+      CASE WHEN skill_accessibility_score < 60 THEN 'Higher skill expectations' END,
+      CASE WHEN fresher_friendliness_score < 60 THEN 'May need stronger preparation as a fresher' END,
+      CASE WHEN learning_mentorship_score < 60 THEN 'Learning or mentorship signals are limited' END,
+      CASE WHEN work_life_balance_score < 60 THEN 'Possible work-life balance concern' END,
+      CASE WHEN company_stability_score < 60 THEN 'Company stability needs closer review' END
+    ],
+    NULL
+  ) AS caution_signals
+FROM score_parts;
+
+
+create or replace view public.company_search_view as
+WITH logo_details AS (
+  SELECT
+    company_logo.company_id,
+    min(NULLIF(TRIM(BOTH FROM company_logo.logo_url), '')) AS logo_url
+  FROM company_logo
+  GROUP BY company_logo.company_id
+),
+tech_rating AS (
+  SELECT
+    company_tech_adoption_rating.company_technologies_id,
+    string_agg(
+      DISTINCT NULLIF(TRIM(BOTH FROM company_tech_adoption_rating.tech_adoption_rating), ''),
+      ' | '
+    ) AS tech_adoption_rating
+  FROM company_tech_adoption_rating
+  GROUP BY company_tech_adoption_rating.company_technologies_id
+),
+top_skills_ranked AS (
+  SELECT
+    csv.company_id,
+    csv.skill_set_name,
+    csv.required_level,
+    row_number() OVER (
+      PARTITION BY csv.company_id
+      ORDER BY csv.required_level DESC, csv.skill_set_name
+    ) AS rn
+  FROM company_skills_view csv
+),
+top_skills AS (
+  SELECT
+    top_skills_ranked.company_id,
+    array_agg(
+      top_skills_ranked.skill_set_name
+      ORDER BY top_skills_ranked.required_level DESC, top_skills_ranked.skill_set_name
+    ) FILTER (WHERE top_skills_ranked.rn <= 5) AS top_skills
+  FROM top_skills_ranked
+  GROUP BY top_skills_ranked.company_id
+)
+SELECT
+  c.company_id,
+  c.name,
+  c.short_name,
+  ld.logo_url,
+  c.category,
+  c.nature_of_company,
+  c.incorporation_year,
+  c.employee_size,
+  c.office_count,
+  c.website_url,
+  c.linkedin_url,
+  left(c.overview_text, 260) AS overview_preview,
+  f.profitability_status,
+  f.yoy_growth_rate,
+  f.valuation,
+  tg.skill_relevance,
+  tg.brand_value,
+  tg.exposure_quality,
+  tg.onboarding_quality,
+  cu.burnout_risk,
+  cu.manager_quality,
+  tech.ai_ml_adoption_level,
+  tr.tech_adoption_rating,
+  br.glassdoor_rating,
+  br.google_rating,
+  br.website_rating,
+  COALESCE(ts.top_skills, ARRAY[]::text[]::varchar[]) AS top_skills,
+  COALESCE(loc.office_cities, ARRAY[]::text[]) AS office_cities,
+  COALESCE(loc.operating_countries, ARRAY[]::text[]) AS operating_countries,
+  fit.student_fit_score
+FROM companies c
+LEFT JOIN logo_details ld
+  ON ld.company_id = c.company_id
+LEFT JOIN company_financials f
+  ON f.company_id = c.company_id
+LEFT JOIN company_talent_growth tg
+  ON tg.company_id = c.company_id
+LEFT JOIN company_culture cu
+  ON cu.company_id = c.company_id
+LEFT JOIN company_technologies tech
+  ON tech.company_id = c.company_id
+LEFT JOIN tech_rating tr
+  ON tr.company_technologies_id = tech.company_technologies_id
+LEFT JOIN company_brand_reputation br
+  ON br.company_id = c.company_id
+LEFT JOIN top_skills ts
+  ON ts.company_id = c.company_id
+LEFT JOIN company_locations_view loc
+  ON loc.company_id = c.company_id
+LEFT JOIN company_student_fit_view fit
+  ON fit.company_id = c.company_id;
+
+
+create or replace view public.company_profile_view as
+WITH logo_details AS (
+  SELECT
+    company_logo.company_id,
+    min(NULLIF(TRIM(BOTH FROM company_logo.logo_url), '')) AS logo_url
+  FROM company_logo
+  GROUP BY company_logo.company_id
+),
+business_details AS (
+  SELECT
+    b.company_id,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM fs.focus_sectors), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM fs.focus_sectors), '') IS NOT NULL) AS focus_sectors,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM od.offerings_description), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM od.offerings_description), '') IS NOT NULL) AS offerings_description,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM tc.top_customers), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM tc.top_customers), '') IS NOT NULL) AS top_customers,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM kc.key_competitors), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM kc.key_competitors), '') IS NOT NULL) AS key_competitors,
+    b.sales_motion,
+    b.innovation_roadmap,
+    b.future_projections,
+    b.market_share_percentage,
+    b.tam,
+    b.sam,
+    b.som,
+    b.customer_concentration_risk
+  FROM company_business b
+  LEFT JOIN company_focus_sectors fs
+    ON fs.company_business_id = b.company_business_id
+  LEFT JOIN company_offerings_description od
+    ON od.company_business_id = b.company_business_id
+  LEFT JOIN company_top_customers tc
+    ON tc.company_business_id = b.company_business_id
+  LEFT JOIN company_key_competitors kc
+    ON kc.company_business_id = b.company_business_id
+  GROUP BY
+    b.company_id,
+    b.sales_motion,
+    b.innovation_roadmap,
+    b.future_projections,
+    b.market_share_percentage,
+    b.tam,
+    b.sam,
+    b.som,
+    b.customer_concentration_risk
+),
+financial_details AS (
+  SELECT
+    f.company_id,
+    f.annual_revenue,
+    f.annual_profit,
+    f.valuation,
+    f.yoy_growth_rate,
+    f.profitability_status,
+    f.total_capital_raised,
+    f.customer_acquisition_cost,
+    f.customer_lifetime_value,
+    f.cac_ltv_ratio,
+    f.churn_rate,
+    f.net_promoter_score,
+    f.burn_rate,
+    f.runway_months,
+    f.burn_multiplier,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM rm.revenue_mix), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM rm.revenue_mix), '') IS NOT NULL) AS revenue_mix,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM kiv.key_investors), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM kiv.key_investors), '') IS NOT NULL) AS key_investors,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM rfr.recent_funding_rounds), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM rfr.recent_funding_rounds), '') IS NOT NULL) AS recent_funding_rounds
+  FROM company_financials f
+  LEFT JOIN company_revenue_mix rm
+    ON rm.company_financials_id = f.company_financials_id
+  LEFT JOIN company_key_investors kiv
+    ON kiv.company_financials_id = f.company_financials_id
+  LEFT JOIN company_recent_funding_rounds rfr
+    ON rfr.company_financials_id = f.company_financials_id
+  GROUP BY
+    f.company_id,
+    f.annual_revenue,
+    f.annual_profit,
+    f.valuation,
+    f.yoy_growth_rate,
+    f.profitability_status,
+    f.total_capital_raised,
+    f.customer_acquisition_cost,
+    f.customer_lifetime_value,
+    f.cac_ltv_ratio,
+    f.churn_rate,
+    f.net_promoter_score,
+    f.burn_rate,
+    f.runway_months,
+    f.burn_multiplier
+),
+culture_details AS (
+  SELECT
+    cu.company_id,
+    cu.employee_turnover,
+    cu.avg_retention_tenure,
+    cu.layoff_history,
+    cu.manager_quality,
+    cu.psychological_safety,
+    cu.mission_clarity,
+    cu.crisis_behavior,
+    cu.burnout_risk,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM wcs.work_culture_summary), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM wcs.work_culture_summary), '') IS NOT NULL) AS work_culture_summary,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM scsr.sustainability_csr), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM scsr.sustainability_csr), '') IS NOT NULL) AS sustainability_csr
+  FROM company_culture cu
+  LEFT JOIN company_work_culture_summary wcs
+    ON wcs.company_culture_id = cu.company_culture_id
+  LEFT JOIN company_sustainability_csr scsr
+    ON scsr.company_culture_id = cu.company_culture_id
+  GROUP BY
+    cu.company_id,
+    cu.employee_turnover,
+    cu.avg_retention_tenure,
+    cu.layoff_history,
+    cu.manager_quality,
+    cu.psychological_safety,
+    cu.mission_clarity,
+    cu.crisis_behavior,
+    cu.burnout_risk
+),
+talent_details AS (
+  SELECT
+    tg.company_id,
+    tg.training_spend,
+    tg.onboarding_quality,
+    tg.internal_mobility,
+    tg.role_clarity,
+    tg.early_ownership,
+    tg.execution_thinking_balance,
+    tg.automation_level,
+    tg.company_maturity,
+    tg.brand_value,
+    tg.skill_relevance,
+    tg.exposure_quality,
+    tg.external_recognition,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM lc.learning_culture), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM lc.learning_culture), '') IS NOT NULL) AS learning_culture,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM ma.mentorship_availability), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM ma.mentorship_availability), '') IS NOT NULL) AS mentorship_availability,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM eo.exit_opportunities), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM eo.exit_opportunities), '') IS NOT NULL) AS exit_opportunities,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM ge.global_exposure), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM ge.global_exposure), '') IS NOT NULL) AS global_exposure,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM ta.tools_access), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM ta.tools_access), '') IS NOT NULL) AS tools_access
+  FROM company_talent_growth tg
+  LEFT JOIN company_learning_culture lc
+    ON lc.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN company_mentorship_availability ma
+    ON ma.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN company_exit_opportunities eo
+    ON eo.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN company_global_exposure ge
+    ON ge.company_talent_growth_id = tg.company_talent_growth_id
+  LEFT JOIN company_tools_access ta
+    ON ta.company_talent_growth_id = tg.company_talent_growth_id
+  GROUP BY
+    tg.company_id,
+    tg.training_spend,
+    tg.onboarding_quality,
+    tg.internal_mobility,
+    tg.role_clarity,
+    tg.early_ownership,
+    tg.execution_thinking_balance,
+    tg.automation_level,
+    tg.company_maturity,
+    tg.brand_value,
+    tg.skill_relevance,
+    tg.exposure_quality,
+    tg.external_recognition
+),
+technology_details AS (
+  SELECT
+    tech.company_id,
+    tech.r_and_d_investment,
+    tech.ai_ml_adoption_level,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM ts.tech_stack), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM ts.tech_stack), '') IS NOT NULL) AS tech_stack,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM tp.technology_partners), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM tp.technology_partners), '') IS NOT NULL) AS technology_partners,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM tar.tech_adoption_rating), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM tar.tech_adoption_rating), '') IS NOT NULL) AS tech_adoption_rating
+  FROM company_technologies tech
+  LEFT JOIN company_tech_stack ts
+    ON ts.company_technologies_id = tech.company_technologies_id
+  LEFT JOIN company_technology_partners tp
+    ON tp.company_technologies_id = tech.company_technologies_id
+  LEFT JOIN company_tech_adoption_rating tar
+    ON tar.company_technologies_id = tech.company_technologies_id
+  GROUP BY
+    tech.company_id,
+    tech.r_and_d_investment,
+    tech.ai_ml_adoption_level
+),
+logistics_details AS (
+  SELECT
+    lg.company_id,
+    lg.typical_hours,
+    lg.overtime_expectations,
+    lg.weekend_work,
+    lg.remote_policy_details,
+    lg.location_centrality,
+    lg.airport_commute_time,
+    lg.office_zone_type,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM pta.public_transport_access), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM pta.public_transport_access), '') IS NOT NULL) AS public_transport_access,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM cp.cab_policy), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM cp.cab_policy), '') IS NOT NULL) AS cab_policy
+  FROM company_logistics lg
+  LEFT JOIN company_public_transport_access pta
+    ON pta.company_logistics_id = lg.company_logistics_id
+  LEFT JOIN company_cab_policy cp
+    ON cp.company_logistics_id = lg.company_logistics_id
+  GROUP BY
+    lg.company_id,
+    lg.typical_hours,
+    lg.overtime_expectations,
+    lg.weekend_work,
+    lg.remote_policy_details,
+    lg.location_centrality,
+    lg.airport_commute_time,
+    lg.office_zone_type
+),
+flexibility_details AS (
+  SELECT
+    company_flexibility_level.company_id,
+    string_agg(
+      DISTINCT NULLIF(TRIM(BOTH FROM company_flexibility_level.flexibility_level), ''),
+      ' | '
+    ) FILTER (
+      WHERE NULLIF(TRIM(BOTH FROM company_flexibility_level.flexibility_level), '') IS NOT NULL
+    ) AS flexibility_level
+  FROM company_flexibility_level
+  GROUP BY company_flexibility_level.company_id
+),
+people_details AS (
+  SELECT
+    p.company_id,
+    p.ceo_name,
+    p.ceo_linkedin_url,
+    p.contact_person_name,
+    p.contact_person_title,
+    p.contact_person_email,
+    p.contact_person_phone,
+    p.decision_maker_access,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM kl.key_leaders), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM kl.key_leaders), '') IS NOT NULL) AS key_leaders
+  FROM company_people p
+  LEFT JOIN company_key_leaders kl
+    ON kl.company_people_id = p.company_people_id
+  GROUP BY
+    p.company_id,
+    p.ceo_name,
+    p.ceo_linkedin_url,
+    p.contact_person_name,
+    p.contact_person_title,
+    p.contact_person_email,
+    p.contact_person_phone,
+    p.decision_maker_access
+),
+brand_details AS (
+  SELECT
+    br.company_id,
+    br.brand_sentiment_score,
+    br.website_quality,
+    br.website_rating,
+    br.social_media_followers,
+    br.glassdoor_rating,
+    br.indeed_rating,
+    br.google_rating,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM ar.awards_recognitions), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM ar.awards_recognitions), '') IS NOT NULL) AS awards_recognitions
+  FROM company_brand_reputation br
+  LEFT JOIN company_awards_recognitions ar
+    ON ar.brand_reputation_id = br.brand_reputation_id
+  GROUP BY
+    br.company_id,
+    br.brand_sentiment_score,
+    br.website_quality,
+    br.website_rating,
+    br.social_media_followers,
+    br.glassdoor_rating,
+    br.indeed_rating,
+    br.google_rating
+),
+company_text_details AS (
+  SELECT
+    c_1.company_id,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM cv.core_values), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM cv.core_values), '') IS NOT NULL) AS core_values,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM h.history_timeline), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM h.history_timeline), '') IS NOT NULL) AS history_timeline,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM rn.recent_news), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM rn.recent_news), '') IS NOT NULL) AS recent_news,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM rs.regulatory_status), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM rs.regulatory_status), '') IS NOT NULL) AS regulatory_status,
+    string_agg(DISTINCT NULLIF(TRIM(BOTH FROM esg.esg_ratings), ''), ' | ')
+      FILTER (WHERE NULLIF(TRIM(BOTH FROM esg.esg_ratings), '') IS NOT NULL) AS esg_ratings
+  FROM companies c_1
+  LEFT JOIN company_core_values cv
+    ON cv.company_id = c_1.company_id
+  LEFT JOIN company_history h
+    ON h.company_id = c_1.company_id
+  LEFT JOIN company_recent_news rn
+    ON rn.company_id = c_1.company_id
+  LEFT JOIN company_regulatory_status rs
+    ON rs.company_id = c_1.company_id
+  LEFT JOIN company_esg_ratings esg
+    ON esg.company_id = c_1.company_id
+  GROUP BY c_1.company_id
+)
+SELECT
+  c.company_id,
+  c.name,
+  c.short_name,
+  ld.logo_url,
+  c.category,
+  c.incorporation_year,
+  c.nature_of_company,
+  c.headquarters_address,
+  c.office_count,
+  c.employee_size,
+  c.website_url,
+  c.linkedin_url,
+  c.twitter_handle,
+  c.facebook_url,
+  c.instagram_url,
+  c.primary_contact_email,
+  c.primary_phone_number,
+  c.overview_text,
+  c.vision_statement,
+  c.mission_statement,
+  c.legal_issues,
+  c.carbon_footprint,
+  td.core_values,
+  td.history_timeline,
+  td.recent_news,
+  td.regulatory_status,
+  td.esg_ratings,
+  loc.office_cities,
+  loc.operating_countries,
+  bd.focus_sectors,
+  bd.offerings_description,
+  bd.top_customers,
+  bd.key_competitors,
+  bd.sales_motion,
+  bd.innovation_roadmap,
+  bd.future_projections,
+  bd.market_share_percentage,
+  bd.tam,
+  bd.sam,
+  bd.som,
+  bd.customer_concentration_risk,
+  fd.annual_revenue,
+  fd.annual_profit,
+  fd.valuation,
+  fd.yoy_growth_rate,
+  fd.profitability_status,
+  fd.total_capital_raised,
+  fd.revenue_mix,
+  fd.key_investors,
+  fd.recent_funding_rounds,
+  fd.customer_acquisition_cost,
+  fd.customer_lifetime_value,
+  fd.cac_ltv_ratio,
+  fd.churn_rate,
+  fd.net_promoter_score,
+  fd.burn_rate,
+  fd.runway_months,
+  fd.burn_multiplier,
+  cd.work_culture_summary,
+  cd.employee_turnover,
+  cd.avg_retention_tenure,
+  cd.layoff_history,
+  cd.manager_quality,
+  cd.psychological_safety,
+  cd.mission_clarity,
+  cd.crisis_behavior,
+  cd.burnout_risk,
+  cd.sustainability_csr,
+  tgd.training_spend,
+  tgd.onboarding_quality,
+  tgd.learning_culture,
+  tgd.mentorship_availability,
+  tgd.internal_mobility,
+  tgd.role_clarity,
+  tgd.early_ownership,
+  tgd.execution_thinking_balance,
+  tgd.automation_level,
+  tgd.company_maturity,
+  tgd.brand_value,
+  tgd.skill_relevance,
+  tgd.exposure_quality,
+  tgd.external_recognition,
+  tgd.exit_opportunities,
+  tgd.global_exposure,
+  tgd.tools_access,
+  techd.r_and_d_investment,
+  techd.ai_ml_adoption_level,
+  techd.tech_stack,
+  techd.technology_partners,
+  techd.tech_adoption_rating,
+  lgd.typical_hours,
+  lgd.overtime_expectations,
+  lgd.weekend_work,
+  lgd.remote_policy_details,
+  lgd.location_centrality,
+  lgd.airport_commute_time,
+  lgd.office_zone_type,
+  lgd.public_transport_access,
+  lgd.cab_policy,
+  fxd.flexibility_level,
+  pd.ceo_name,
+  pd.ceo_linkedin_url,
+  pd.key_leaders,
+  pd.contact_person_name,
+  pd.contact_person_title,
+  pd.contact_person_email,
+  pd.contact_person_phone,
+  pd.decision_maker_access,
+  brd.brand_sentiment_score,
+  brd.website_quality,
+  brd.website_rating,
+  brd.social_media_followers,
+  brd.glassdoor_rating,
+  brd.indeed_rating,
+  brd.google_rating,
+  brd.awards_recognitions,
+  fit.student_fit_score,
+  fit.positive_signals,
+  fit.caution_signals
+FROM companies c
+LEFT JOIN logo_details ld
+  ON ld.company_id = c.company_id
+LEFT JOIN company_locations_view loc
+  ON loc.company_id = c.company_id
+LEFT JOIN company_text_details td
+  ON td.company_id = c.company_id
+LEFT JOIN business_details bd
+  ON bd.company_id = c.company_id
+LEFT JOIN financial_details fd
+  ON fd.company_id = c.company_id
+LEFT JOIN culture_details cd
+  ON cd.company_id = c.company_id
+LEFT JOIN talent_details tgd
+  ON tgd.company_id = c.company_id
+LEFT JOIN technology_details techd
+  ON techd.company_id = c.company_id
+LEFT JOIN logistics_details lgd
+  ON lgd.company_id = c.company_id
+LEFT JOIN flexibility_details fxd
+  ON fxd.company_id = c.company_id
+LEFT JOIN people_details pd
+  ON pd.company_id = c.company_id
+LEFT JOIN brand_details brd
+  ON brd.company_id = c.company_id
+LEFT JOIN company_student_fit_view fit
+  ON fit.company_id = c.company_id;
+
+
+create or replace view public.company_compare_view as
+SELECT
+  company_id,
+  name,
+  short_name,
+  logo_url,
+  category,
+  nature_of_company,
+  employee_size,
+  office_count,
+  office_cities,
+  operating_countries,
+  annual_revenue,
+  annual_profit,
+  valuation,
+  yoy_growth_rate,
+  profitability_status,
+  work_culture_summary,
+  manager_quality,
+  psychological_safety,
+  burnout_risk,
+  typical_hours,
+  weekend_work,
+  remote_policy_details,
+  flexibility_level,
+  onboarding_quality,
+  learning_culture,
+  mentorship_availability,
+  internal_mobility,
+  role_clarity,
+  early_ownership,
+  skill_relevance,
+  exposure_quality,
+  exit_opportunities,
+  global_exposure,
+  ai_ml_adoption_level,
+  tech_stack,
+  technology_partners,
+  tech_adoption_rating,
+  brand_value,
+  glassdoor_rating,
+  google_rating,
+  website_rating,
+  student_fit_score,
+  positive_signals,
+  caution_signals
+FROM company_profile_view p;
+
+
+create or replace view public.company_ai_context_view as
+WITH skills_json AS (
+  SELECT
+    company_skills_view.company_id,
+    jsonb_agg(
+      jsonb_build_object(
+        'skill_set_id', company_skills_view.skill_set_id,
+        'skill_name', company_skills_view.skill_set_name,
+        'skill_short_name', company_skills_view.skill_short_name,
+        'required_level', company_skills_view.required_level,
+        'proficiency_name', company_skills_view.proficiency_name,
+        'proficiency_code', company_skills_view.proficiency_code
+      )
+      ORDER BY company_skills_view.required_level DESC, company_skills_view.skill_set_name
+    ) AS skills
+  FROM company_skills_view
+  GROUP BY company_skills_view.company_id
+)
+SELECT
+  p.company_id,
+  p.name,
+  p.short_name,
+  p.category,
+  j.short_json,
+  j.full_json,
+  to_jsonb(p.*) AS profile_json,
+  COALESCE(sj.skills, '[]'::jsonb) AS skills_json,
+  jsonb_build_object(
+    'office_cities', COALESCE(p.office_cities, ARRAY[]::text[]),
+    'operating_countries', COALESCE(p.operating_countries, ARRAY[]::text[])
+  ) AS locations_json,
+  jsonb_build_object(
+    'student_fit_score', p.student_fit_score,
+    'positive_signals', p.positive_signals,
+    'caution_signals', p.caution_signals
+  ) AS student_fit_json,
+  concat_ws(
+    E'\n\n',
+    'Company Name: ' || COALESCE(p.name, ''),
+    'Short Name: ' || COALESCE(p.short_name, ''),
+    'Category: ' || COALESCE(p.category, ''),
+    'Nature of Company: ' || COALESCE(p.nature_of_company, ''),
+    'Employee Size: ' || COALESCE(p.employee_size, ''),
+    'Website: ' || COALESCE(p.website_url, ''),
+    'Overview: ' || COALESCE(p.overview_text, ''),
+    'Business Focus: ' || COALESCE(p.focus_sectors, ''),
+    'Offerings: ' || COALESCE(p.offerings_description, ''),
+    'Top Customers: ' || COALESCE(p.top_customers, ''),
+    'Competitors: ' || COALESCE(p.key_competitors, ''),
+    'Financials: Revenue=' || COALESCE(p.annual_revenue, '') ||
+      ', Profit=' || COALESCE(p.annual_profit, '') ||
+      ', Valuation=' || COALESCE(p.valuation, '') ||
+      ', Growth=' || COALESCE(p.yoy_growth_rate, '') ||
+      ', Profitability=' || COALESCE(p.profitability_status, ''),
+    'Work Culture: ' || COALESCE(p.work_culture_summary, '') ||
+      ', Manager Quality=' || COALESCE(p.manager_quality, '') ||
+      ', Psychological Safety=' || COALESCE(p.psychological_safety, '') ||
+      ', Burnout Risk=' || COALESCE(p.burnout_risk, ''),
+    'Student Career Signals: Onboarding=' || COALESCE(p.onboarding_quality, '') ||
+      ', Learning Culture=' || COALESCE(p.learning_culture, '') ||
+      ', Mentorship=' || COALESCE(p.mentorship_availability, '') ||
+      ', Role Clarity=' || COALESCE(p.role_clarity, '') ||
+      ', Early Ownership=' || COALESCE(p.early_ownership, '') ||
+      ', Skill Relevance=' || COALESCE(p.skill_relevance, '') ||
+      ', Exposure Quality=' || COALESCE(p.exposure_quality, ''),
+    'Technology: AI/ML Adoption=' || COALESCE(p.ai_ml_adoption_level, '') ||
+      ', Tech Stack=' || COALESCE(p.tech_stack, '') ||
+      ', Tech Adoption Rating=' || COALESCE(p.tech_adoption_rating, ''),
+    'Locations: Office Cities=' || array_to_string(COALESCE(p.office_cities, ARRAY[]::text[]), ', ') ||
+      ', Operating Countries=' || array_to_string(COALESCE(p.operating_countries, ARRAY[]::text[]), ', '),
+    'Student Fit Score: ' || COALESCE(p.student_fit_score::text, ''),
+    'Positive Signals: ' || array_to_string(COALESCE(p.positive_signals, ARRAY[]::text[]), ', '),
+    'Caution Signals: ' || array_to_string(COALESCE(p.caution_signals, ARRAY[]::text[]), ', ')
+  ) AS ai_context_text
+FROM company_profile_view p
+LEFT JOIN company_json j
+  ON j.company_id = p.company_id
+LEFT JOIN skills_json sj
+  ON sj.company_id = p.company_id;
